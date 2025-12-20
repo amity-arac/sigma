@@ -1,0 +1,182 @@
+.trajectory-table-container {
+  background: var(--bg-tertiary);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.trajectory-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.trajectory-table thead {
+  background: var(--darker);
+}
+
+.trajectory-table th {
+  text-align: left;
+  padding: 14px 16px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.trajectory-table tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background 0.2s ease;
+}
+
+.trajectory-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.trajectory-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.trajectory-table td {
+  padding: 12px 16px;
+  font-size: 0.9rem;
+}
+
+.id-cell .trajectory-id {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.8rem;
+  color: var(--muted);
+  background: var(--darker);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.env-badge {
+  background: var(--secondary);
+  color: white;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.date-cell {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.status-badge.done {
+  background: rgba(45, 212, 167, 0.15);
+  color: var(--primary);
+}
+
+.status-badge.incomplete {
+  background: rgba(156, 163, 175, 0.15);
+  color: var(--muted);
+}
+
+.reward-cell {
+  text-align: center;
+}
+
+.reward-value {
+  font-weight: 600;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.reward-value.success {
+  color: var(--primary);
+}
+
+.reward-value.partial {
+  color: var(--accent-yellow);
+}
+
+.reward-value.fail {
+  color: var(--accent-red);
+}
+
+.actions-cell {
+  display: flex;
+  gap: 8px;
+}
+
+.action-button {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.action-button:hover {
+  background: var(--darker);
+}
+
+.action-button.view:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.action-button.complete {
+  border-color: var(--accent-green, #4ade80);
+  color: var(--accent-green, #4ade80);
+}
+
+.action-button.complete:hover {
+  background: var(--accent-green, #4ade80);
+  color: var(--darker);
+}
+
+.action-button.delete:hover {
+  border-color: var(--accent-red);
+  color: var(--accent-red);
+}
+
+.action-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.trajectory-table-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  background: var(--bg-tertiary);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  text-align: center;
+}
+
+.trajectory-table-empty .empty-icon {
+  font-size: 3rem;
+  margin-bottom: 16px;
+}
+
+.trajectory-table-empty h3 {
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.trajectory-table-empty p {
+  color: var(--muted);
+  font-size: 0.9rem;
+}

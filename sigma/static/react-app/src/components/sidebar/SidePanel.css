@@ -1,0 +1,27 @@
+.side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.persona-display {
+  background: var(--bg-primary);
+  padding: 12px;
+  border-radius: 5px;
+  font-size: 0.9em;
+  line-height: 1.5;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.wiki-content {
+  background: var(--bg-primary);
+  padding: 12px;
+  border-radius: 5px;
+  font-size: 0.85em;
+  line-height: 1.6;
+  max-height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}

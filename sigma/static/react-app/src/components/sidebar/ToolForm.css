@@ -1,0 +1,48 @@
+.tool-form {
+  padding: 15px;
+  background: var(--bg-tertiary);
+  border-radius: 5px;
+  margin-top: 10px;
+}
+
+.tool-form h4 {
+  color: var(--accent-green);
+  margin-bottom: 10px;
+}
+
+.tool-param {
+  margin-bottom: 10px;
+}
+
+.tool-param label {
+  display: block;
+  font-size: 0.85em;
+  color: var(--text-secondary);
+  margin-bottom: 3px;
+}
+
+.tool-param label .required {
+  color: var(--accent-red);
+  margin-left: 2px;
+}
+
+.tool-param label .param-type {
+  color: var(--muted);
+  font-size: 0.9em;
+  margin-left: 4px;
+}
+
+.tool-param input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.9em;
+}
+
+.tool-param input:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}

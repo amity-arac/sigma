@@ -1,0 +1,46 @@
+.results-panel {
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  padding: 20px;
+  margin-top: 20px;
+}
+
+.results-panel h3 {
+  color: var(--accent-purple);
+  margin-bottom: 15px;
+}
+
+.results-content {
+  margin-bottom: 15px;
+}
+
+.result-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.result-item:last-child {
+  border-bottom: none;
+}
+
+.result-label {
+  color: var(--text-secondary);
+}
+
+.result-value {
+  font-weight: 500;
+}
+
+.result-value.success {
+  color: var(--accent-green);
+}
+
+.result-value.failure {
+  color: var(--accent-red);
+}
+
+.results-actions {
+  margin-top: 15px;
+}

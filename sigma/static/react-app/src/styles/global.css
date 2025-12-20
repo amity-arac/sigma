@@ -1,0 +1,70 @@
+:root {
+  --primary: #2DD4A7;
+  --primary-light: #5EECC5;
+  --primary-dark: #1FB892;
+  --secondary: #3B82F6;
+  --accent: #F472B6;
+  --dark: #1A1A1A;
+  --darker: #121212;
+  --card-bg: #242424;
+  --text: #FFFFFF;
+  --text-secondary: #E5E5E5;
+  --muted: #9CA3AF;
+  --border: rgba(255,255,255,0.1);
+  
+  --bg-primary: var(--darker);
+  --bg-secondary: var(--dark);
+  --bg-tertiary: var(--card-bg);
+  --accent-blue: var(--secondary);
+  --accent-green: var(--primary);
+  --accent-yellow: #ffc107;
+  --accent-red: #f44336;
+  --accent-purple: var(--accent);
+  --text-primary: var(--text);
+  --border-color: var(--border);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 1800px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes dots {
+  0%, 20% { content: ''; }
+  40% { content: '.'; }
+  60% { content: '..'; }
+  80%, 100% { content: '...'; }
+}

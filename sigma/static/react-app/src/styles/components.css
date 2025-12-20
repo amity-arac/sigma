@@ -1,0 +1,156 @@
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.95em;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: var(--accent-blue);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #3a7fc9;
+}
+
+.btn-success {
+  background: var(--accent-green);
+  color: white;
+}
+
+.btn-success:hover {
+  background: #45a049;
+}
+
+.btn-auto {
+  background: linear-gradient(135deg, var(--accent-purple), var(--secondary));
+  color: white;
+  min-width: auto;
+  padding: 10px 15px;
+}
+
+.btn-auto:hover {
+  background: linear-gradient(135deg, #a855f7, #2563eb);
+}
+
+.btn-undo {
+  background: linear-gradient(135deg, #6b7280, #4b5563);
+  color: white;
+  min-width: auto;
+  padding: 10px 15px;
+}
+
+.btn-undo:hover {
+  background: linear-gradient(135deg, #9ca3af, #6b7280);
+}
+
+.btn-warning {
+  background: var(--accent-yellow);
+  color: black;
+}
+
+.btn-danger {
+  background: var(--accent-red);
+  color: white;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-header {
+  padding: 6px 12px;
+  font-size: 0.85em;
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.btn-header:hover {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-color: var(--primary);
+}
+
+.btn-header.btn-new-session {
+  border-color: var(--primary-dark);
+}
+
+.btn-header.btn-new-session:hover {
+  background: var(--primary-dark);
+  color: white;
+  border-color: var(--primary);
+}
+
+.btn-approve {
+  background: var(--accent-green);
+  color: white;
+}
+
+.btn-approve:hover {
+  background: var(--primary-light);
+}
+
+.btn-reject {
+  background: transparent;
+  border: 1px solid var(--accent-red);
+  color: var(--accent-red);
+}
+
+.btn-reject:hover {
+  background: var(--accent-red);
+  color: white;
+}
+
+/* Form Elements */
+.form-row {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+  margin-bottom: 15px;
+}
+
+.form-group {
+  flex: 1;
+  min-width: 200px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--text-secondary);
+  font-size: 0.9em;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.95em;
+}
+
+.form-group textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+/* Spinner */
+.spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--text-secondary);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}

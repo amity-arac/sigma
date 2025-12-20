@@ -1,0 +1,153 @@
+.chat-header {
+  padding: 15px 20px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.chat-header h3 {
+  color: var(--primary);
+}
+
+.chat-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.status-badge {
+  padding: 5px 10px;
+  border-radius: 15px;
+  font-size: 0.8em;
+  font-weight: 500;
+}
+
+.status-badge.active {
+  background: var(--accent-green);
+  color: white;
+}
+
+.status-badge.inactive {
+  background: var(--text-secondary);
+  color: white;
+}
+
+.status-badge.done {
+  background: var(--accent-purple);
+  color: white;
+}
+
+.btn-save-trajectory {
+  background: var(--accent-green);
+  color: white;
+}
+
+.btn-save-trajectory:hover:not(:disabled) {
+  background: #45a049;
+}
+
+.btn-save-trajectory:disabled {
+  background: var(--text-secondary);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Autopilot Toggle */
+.autopilot-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: var(--bg-secondary);
+  border-radius: 20px;
+  border: 1px solid var(--border-color);
+}
+
+.autopilot-label {
+  font-size: 0.85em;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--text-secondary);
+  transition: 0.3s;
+  border-radius: 24px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: var(--accent-green);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(20px);
+}
+
+.toggle-switch input:focus + .toggle-slider {
+  box-shadow: 0 0 1px var(--accent-green);
+}
+
+/* Auto-save Status */
+.auto-save-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 15px;
+  font-size: 0.8em;
+  font-weight: 500;
+  cursor: default;
+}
+
+.auto-save-status.saving {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  animation: pulse 1.5s infinite;
+}
+
+.auto-save-status.saved {
+  background: rgba(76, 175, 80, 0.15);
+  color: var(--accent-green);
+}
+
+.auto-save-status.unsaved {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}

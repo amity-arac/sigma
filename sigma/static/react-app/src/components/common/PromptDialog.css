@@ -1,0 +1,63 @@
+.prompt-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+.prompt-dialog {
+  background: var(--bg-secondary);
+  padding: 25px;
+  border-radius: 10px;
+  max-width: 450px;
+  width: 90%;
+  border: 1px solid var(--border-color);
+  animation: fadeIn 0.2s ease;
+}
+
+.prompt-dialog h3 {
+  color: var(--primary);
+  margin-bottom: 15px;
+}
+
+.prompt-dialog p {
+  color: var(--text-secondary);
+  margin-bottom: 15px;
+  line-height: 1.5;
+  font-size: 0.95em;
+}
+
+.prompt-input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 0.95em;
+  margin-bottom: 20px;
+  box-sizing: border-box;
+}
+
+.prompt-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.prompt-input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
+.prompt-dialog-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}

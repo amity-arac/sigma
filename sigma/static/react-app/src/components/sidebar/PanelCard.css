@@ -1,0 +1,37 @@
+.panel-card {
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.panel-card-header {
+  padding: 12px 15px;
+  background: var(--bg-tertiary);
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+.panel-card-header:hover {
+  background: var(--border-color);
+}
+
+.panel-toggle {
+  transition: transform 0.2s;
+}
+
+.panel-toggle.expanded {
+  transform: rotate(0deg);
+}
+
+.panel-toggle:not(.expanded) {
+  transform: rotate(-90deg);
+}
+
+.panel-card-content {
+  padding: 15px;
+  max-height: 300px;
+  overflow-y: auto;
+}
