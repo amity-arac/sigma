@@ -35,7 +35,7 @@ function ResultsPanel({ results, onNewSession }) {
       
       <div className="results-actions">
         <button className="btn btn-primary" onClick={onNewSession}>
-          ✨ Start New Session
+          ✨ Start New Trajectory
         </button>
       </div>
     </div>

@@ -28,3 +28,34 @@
   content: '';
   animation: dots 1.5s steps(4, end) infinite;
 }
+
+/* Mobile-friendly loading indicator */
+@media (max-width: 768px) {
+  .loading-message {
+    padding: 12px 16px;
+    gap: 8px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+  }
+  
+  .loading-message .loading-spinner {
+    width: 20px;
+    height: 20px;
+    border-width: 2px;
+  }
+  
+  .loading-message .loading-text {
+    font-size: 0.9em;
+  }
+}
+
+@media (max-width: 480px) {
+  .loading-message {
+    padding: 10px 12px;
+    margin-bottom: 10px;
+  }
+  
+  .loading-message .loading-text {
+    font-size: 0.85em;
+  }
+}

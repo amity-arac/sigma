@@ -26,3 +26,26 @@
   overflow-y: auto;
   flex: 1;
 }
+
+/* Mobile-friendly sticky user message */
+@media (max-width: 768px) {
+  .sticky-user-message {
+    padding: 6px 14px;
+  }
+  
+  .sticky-user-message .sticky-label {
+    font-size: 0.7em;
+  }
+  
+  .sticky-user-message .sticky-content {
+    font-size: 0.8em;
+    max-height: 36px;
+  }
+}
+
+/* Hide sticky persona on mobile - it's in the floating panel now */
+@media (max-width: 1000px) {
+  .sticky-user-message {
+    display: none !important;
+  }
+}

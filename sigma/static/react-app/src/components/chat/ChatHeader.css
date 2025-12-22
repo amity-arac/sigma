@@ -34,8 +34,8 @@
 }
 
 .status-badge.done {
-  background: var(--accent-purple);
-  color: white;
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
 }
 
 .btn-save-trajectory {
@@ -150,4 +150,118 @@
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+
+/* Chat header left section */
+.chat-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chat-header-left h3 {
+  margin: 0;
+}
+
+/* Mobile-friendly header */
+@media (max-width: 768px) {
+  .chat-header {
+    padding: 10px 14px;
+    gap: 8px;
+  }
+  
+  .chat-header h3 {
+    font-size: 0.95rem;
+  }
+  
+  .chat-header-right {
+    gap: 6px;
+  }
+  
+  .autopilot-toggle {
+    padding: 4px 8px;
+    gap: 4px;
+  }
+  
+  .autopilot-label-text {
+    display: none;
+  }
+  
+  .toggle-switch {
+    width: 36px;
+    height: 20px;
+  }
+  
+  .toggle-slider:before {
+    height: 14px;
+    width: 14px;
+  }
+  
+  .toggle-switch input:checked + .toggle-slider:before {
+    transform: translateX(16px);
+  }
+  
+  .auto-save-status {
+    padding: 4px 8px;
+    font-size: 0.7em;
+  }
+  
+  .auto-save-status .save-text {
+    display: none;
+  }
+  
+  .status-badge {
+    padding: 3px 8px;
+    font-size: 0.7em;
+  }
+  
+  .btn-new-trajectory .btn-text {
+    display: none;
+  }
+  
+  .btn-new-trajectory {
+    padding: 6px 10px !important;
+    min-width: auto;
+  }
+}
+
+/* Hide redundant controls on mobile - they're in the floating panel now */
+@media (max-width: 1000px) {
+  .chat-header-right .autopilot-toggle,
+  .chat-header-right .auto-save-status,
+  .chat-header-right .btn-new-trajectory {
+    display: none;
+  }
+  
+  .chat-header-left .status-badge {
+    display: none;
+  }
+  
+  /* Hide entire chat header on mobile - SimulationPage has its own header */
+  .chat-header {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .chat-header {
+    padding: 8px 12px;
+  }
+  
+  .chat-header-left {
+    gap: 6px;
+  }
+  
+  .chat-header h3 {
+    font-size: 0.85rem;
+  }
+  
+  .header-title-text {
+    display: none;
+  }
+  
+  .status-badge {
+    padding: 2px 6px;
+    font-size: 0.65em;
+  }
 }

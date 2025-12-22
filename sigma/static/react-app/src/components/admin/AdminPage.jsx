@@ -4,11 +4,12 @@ import TrajectoryTable from './TrajectoryTable'
 import TrajectoryViewer from './TrajectoryViewer'
 import './AdminPage.css'
 
-function AdminPage({ onBack }) {
+function AdminPage() {
   const [trajectories, setTrajectories] = useState([])
   const [environments, setEnvironments] = useState([])
   const [selectedEnv, setSelectedEnv] = useState('')
   const [dateFilter, setDateFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all') // 'all', 'complete', 'incomplete'
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [selectedTrajectory, setSelectedTrajectory] = useState(null)
@@ -32,6 +33,13 @@ function AdminPage({ onBack }) {
         })
       }
       
+      // Filter by status
+      if (statusFilter === 'complete') {
+        filtered = filtered.filter(t => t.is_done === true)
+      } else if (statusFilter === 'incomplete') {
+        filtered = filtered.filter(t => t.is_done !== true)
+      }
+      
       // Sort by created_at descending
       filtered.sort((a, b) => {
         const dateA = a.created_at || ''
@@ -45,7 +53,7 @@ function AdminPage({ onBack }) {
     } finally {
       setLoading(false)
     }
-  }, [selectedEnv, dateFilter])
+  }, [selectedEnv, dateFilter, statusFilter])
 
   const loadEnvironments = useCallback(async () => {
     try {
@@ -110,6 +118,11 @@ function AdminPage({ onBack }) {
     setSelectedTrajectory(null)
   }
 
+  const handleSimulate = (trajectory) => {
+    // Navigate to simulation page for this trajectory
+    window.location.href = `/trajectories/${trajectory.id}/simulation`
+  }
+
   const handleExport = async () => {
     if (trajectories.length === 0) {
       setError('No trajectories to export')
@@ -160,9 +173,6 @@ function AdminPage({ onBack }) {
     <div className="admin-page">
       <div className="admin-header">
         <div className="admin-header-left">
-          <button className="back-button" onClick={onBack}>
-            ← Back to Simulator
-          </button>
           <h1>📊 Trajectory Admin</h1>
         </div>
         <div className="admin-stats">
@@ -185,11 +195,25 @@ function AdminPage({ onBack }) {
         </div>
         
         <div className="filter-group">
-          <label>Date</label>
+          <label>Status</label>
+          <select 
+            value={statusFilter} 
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="all">All Status</option>
+            <option value="complete">✓ Complete</option>
+            <option value="incomplete">○ Incomplete</option>
+          </select>
+        </div>
+        
+        <div className="filter-group">
+          <label>Date (YYYY-MM-DD)</label>
           <input 
-            type="date" 
+            type="text" 
             value={dateFilter}
             onChange={(e) => setDateFilter(e.target.value)}
+            placeholder="e.g. 2025-12-20"
+            pattern="\d{4}-\d{2}-\d{2}"
           />
         </div>
         
@@ -197,9 +221,9 @@ function AdminPage({ onBack }) {
           🔄 Refresh
         </button>
         
-        {dateFilter && (
-          <button className="clear-filter-button" onClick={() => setDateFilter('')}>
-            ✕ Clear Date Filter
+        {(dateFilter || statusFilter !== 'all') && (
+          <button className="clear-filter-button" onClick={() => { setDateFilter(''); setStatusFilter('all'); }}>
+            ✕ Clear Filters
           </button>
         )}
         
@@ -260,6 +284,7 @@ function AdminPage({ onBack }) {
             handleCloseViewer()
           }}
           onMarkComplete={() => handleMarkComplete(selectedTrajectory)}
+          onSimulate={() => handleSimulate(selectedTrajectory)}
         />
       )}
     </div>

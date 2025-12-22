@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional
 
 from litellm import completion
 
-from sigma.env_registry import get_environment_config, EnvironmentConfig
+from sigma.env_registry import get_environment_config, EnvironmentConfig, DATA_ENVS_PATH
 
 
 @dataclass
@@ -42,6 +42,7 @@ class GeneratedScenario:
     user_id: str = ""  # Generated user_id for GRPO training data
     scenario_goal: str = ""  # Overall expected outcome of this scenario
     augmented_data: Dict[str, Any] = field(default_factory=dict)  # Additional data to inject (products, flights, etc.)
+    seed_task_id: Optional[str] = None  # The ID of the original task that inspired this scenario
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -52,6 +53,7 @@ class GeneratedScenario:
             "data": self.data,
             "data_key": self.data_key,
             "seed_task_instruction": self.seed_task_instruction,
+            "seed_task_id": self.seed_task_id,
             "generation_timestamp": self.generation_timestamp,
             "env_name": self.env_name,
             "scenario_goal": self.scenario_goal,
@@ -103,12 +105,12 @@ class ScenarioGenerator:
     def _load_policy(self) -> None:
         """Load the agent policy document for this environment."""
         import os
-        envs_path = os.path.join(os.path.dirname(__file__), "envs")
-        policy_path = os.path.join(envs_path, self.env_name, "policy.md")
+        # Use DATA_ENVS_PATH to find policy.md in data/envs/<env_name>/
+        policy_path = os.path.join(DATA_ENVS_PATH, self.env_name, "policy.md")
         
         # Also check for retail_t2 -> retail fallback
         if not os.path.exists(policy_path) and self.env_name == "retail_t2":
-            policy_path = os.path.join(envs_path, "retail", "policy.md")
+            policy_path = os.path.join(DATA_ENVS_PATH, "retail", "policy.md")
         
         try:
             if os.path.exists(policy_path):
@@ -175,9 +177,11 @@ class ScenarioGenerator:
         # Filter by task IDs if specified
         available_tasks = self._tasks
         if self.task_ids is not None:
+            # Convert task_ids to strings for comparison since task IDs in JSON are strings
+            task_ids_str = [str(tid) for tid in self.task_ids]
             available_tasks = [
                 task for task in self._tasks 
-                if task.get("id") in self.task_ids
+                if str(task.get("id")) in task_ids_str
             ]
             if not available_tasks:
                 print(f"[ScenarioGenerator] Warning: No tasks found with IDs {self.task_ids}, using all tasks")
@@ -424,6 +428,7 @@ CRITICAL REMINDERS:
         # Pick one as the primary inspiration
         primary_seed = random.choice(seed_tasks)
         seed_instruction = primary_seed.get("instruction", "")
+        seed_task_id = primary_seed.get("id")  # Get the task ID
         
         # Generate unique IDs
         ids = self._generate_base_ids()
@@ -440,6 +445,7 @@ CRITICAL REMINDERS:
         print(f"{'='*70}")
         print(f"🌍 Environment: {self.env_config.display_name}")
         print(f"🤖 Model: {self.model} ({self.provider})")
+        print(f"📌 Seed task ID: {seed_task_id}")
         print(f"📌 Seed inspiration: {seed_instruction[:80]}...")
         print(f"📊 DB collections sampled: {', '.join(db_samples.keys())}")
         print(f"{'='*70}\n")
@@ -481,6 +487,7 @@ CRITICAL REMINDERS:
                 data=data.get(data_key, {}),
                 data_key=data_key,
                 seed_task_instruction=seed_instruction,
+                seed_task_id=seed_task_id,
                 generation_timestamp=datetime.now().isoformat(),
                 env_name=self.env_name,
                 scenario_goal=data.get("scenario_goal", ""),

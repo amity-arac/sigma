@@ -80,6 +80,15 @@
   font-size: 0.85em;
 }
 
+.action-suggestion-content.tool-name {
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 0.9em;
+  font-weight: 600;
+  color: var(--accent-purple);
+  padding: 8px 12px;
+  max-height: none;
+}
+
 .action-suggestion-buttons {
   display: flex;
   gap: 10px;
@@ -106,4 +115,131 @@
 .action-suggestion.rejected {
   border-color: var(--accent-red);
   opacity: 0.5;
+}
+
+/* Mobile-friendly action suggestion */
+@media (max-width: 768px) {
+  .action-suggestion {
+    margin-bottom: 10px;
+    border-radius: 10px;
+    border-width: 1px;
+  }
+  
+  .action-suggestion-header {
+    padding: 8px 12px;
+    gap: 6px;
+  }
+  
+  .action-suggestion-header h4 {
+    font-size: 0.85em;
+  }
+  
+  .action-suggestion-body {
+    padding: 10px;
+  }
+  
+  .action-suggestion-section {
+    margin-bottom: 8px;
+  }
+  
+  .action-suggestion-label {
+    font-size: 0.7em;
+  }
+  
+  .action-suggestion-content {
+    padding: 8px;
+    font-size: 0.8em;
+    max-height: 120px;
+  }
+  
+  .action-suggestion-content.reasoning {
+    font-size: 0.75em;
+    max-height: 60px;
+    border-left-width: 2px;
+  }
+  
+  .action-suggestion-buttons {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+  
+  .action-suggestion-buttons .btn {
+    padding: 10px 14px;
+    font-size: 0.85em;
+  }
+}
+
+@media (max-width: 480px) {
+  .action-suggestion {
+    margin-bottom: 8px;
+    border-radius: 8px;
+    margin-left: -2px;
+    margin-right: -2px;
+  }
+  
+  .action-suggestion-header {
+    padding: 6px 10px;
+  }
+  
+  .action-suggestion-header h4 {
+    font-size: 0.8em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .action-suggestion-body {
+    padding: 8px;
+  }
+  
+  .action-suggestion-section {
+    margin-bottom: 6px;
+  }
+  
+  .action-suggestion-label {
+    font-size: 0.65em;
+    margin-bottom: 4px;
+  }
+  
+  /* Scrollable reasoning on mobile with decent height */
+  .action-suggestion-content.reasoning {
+    max-height: 100px;
+    padding: 8px 10px;
+    font-size: 0.75em;
+    overflow-y: auto;
+    display: block;
+    -webkit-line-clamp: unset;
+    -webkit-box-orient: unset;
+  }
+  
+  .action-suggestion-content {
+    padding: 6px 8px;
+    font-size: 0.75em;
+    max-height: 100px;
+  }
+  
+  .action-suggestion-content.code {
+    font-size: 0.7em;
+    max-height: 80px;
+  }
+  
+  .action-suggestion-buttons {
+    padding: 6px 10px;
+    gap: 6px;
+  }
+  
+  .action-suggestion-buttons .btn {
+    padding: 8px 12px;
+    font-size: 0.8em;
+    flex: 1;
+    min-width: 0;
+  }
+  
+  .action-suggestion-buttons .btn-reject {
+    flex: 0.8;
+  }
+  
+  .action-suggestion-buttons .btn-approve {
+    flex: 1.2;
+  }
 }

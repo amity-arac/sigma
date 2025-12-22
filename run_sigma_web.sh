@@ -13,20 +13,26 @@ ROOT_DIR="$(pwd)"
 # Set PYTHONPATH so 'sigma' module can be imported from 'src' directory
 export PYTHONPATH="$ROOT_DIR:$PYTHONPATH"
 
-# Build React app in watch mode (rebuilds on changes) in background
-cd sigma/static/react-app && npm run build -- --watch &
-REACT_PID=$!
+# Build React app once first (so dist/assets exists before server starts)
+echo "Building React app..."
+cd sigma/static/react-app && npm run build
 
-# Go back to root directory
-cd "$ROOT_DIR"
+# # Now start watch mode in background (for subsequent changes)
+# npm run build -- --watch &
+# REACT_PID=$!
 
-# Cleanup function to kill React build watcher when script exits
-cleanup() {
-    echo "Shutting down..."
-    kill $REACT_PID 2>/dev/null
-    exit 0
-}
-trap cleanup SIGINT SIGTERM
+# # Go back to root directory
+# cd "$ROOT_DIR"
+
+# # Cleanup function to kill React build watcher when script exits
+# cleanup() {
+#     echo "Shutting down..."
+#     kill $REACT_PID 2>/dev/null
+#     exit 0
+# }
+# trap cleanup SIGINT SIGTERM
+
+cd ../../..
 
 # Run uvicorn with auto-reload for Python files (using 'sigma' as module name)
 uvicorn sigma.api_server:app --port 8001 --reload --reload-dir sigma

@@ -1,96 +1,85 @@
 import { useState, useCallback, useEffect } from 'react'
 import { SessionProvider } from './context/SessionContext'
 import { ToastProvider } from './context/ToastContext'
+import { MainLayout } from './components/layout'
 import Header from './components/Header'
 import SetupPanel from './components/SetupPanel'
-import MainContent from './components/MainContent'
-import ResultsPanel from './components/ResultsPanel'
 import ToastContainer from './components/common/ToastContainer'
 import { AdminPage } from './components/admin'
+import { EnvironmentsPage } from './components/environments'
+import SimulationPage from './components/SimulationPage'
+
+// Simple URL-based router
+function parseRoute(pathname) {
+  // Match /trajectories/:id/simulation
+  const simulationMatch = pathname.match(/^\/trajectories\/([^/]+)\/simulation$/)
+  if (simulationMatch) {
+    return { view: 'simulation', trajectoryId: simulationMatch[1] }
+  }
+  
+  // Match /trajectory or /admin (legacy)
+  if (pathname === '/trajectory' || pathname === '/admin') {
+    return { view: 'trajectory', trajectoryId: null }
+  }
+  
+  // Match /env-config
+  if (pathname === '/env-config') {
+    return { view: 'environments', trajectoryId: null }
+  }
+  
+  // Default to simulator setup
+  return { view: 'simulator', trajectoryId: null }
+}
 
 function App() {
-  const [isSimulationStarted, setIsSimulationStarted] = useState(false)
-  const [showResults, setShowResults] = useState(false)
-  const [results, setResults] = useState(null)
-  const [currentView, setCurrentView] = useState('simulator') // 'simulator' or 'admin'
+  const [route, setRoute] = useState(() => parseRoute(window.location.pathname))
 
   // Handle URL-based routing
   useEffect(() => {
     const handleRouteChange = () => {
-      const path = window.location.pathname
-      if (path === '/admin') {
-        setCurrentView('admin')
-      } else {
-        setCurrentView('simulator')
-      }
+      setRoute(parseRoute(window.location.pathname))
     }
-
-    // Initial route check
-    handleRouteChange()
 
     // Listen for popstate (browser back/forward)
     window.addEventListener('popstate', handleRouteChange)
     return () => window.removeEventListener('popstate', handleRouteChange)
   }, [])
 
-  const navigateTo = useCallback((view) => {
-    const path = view === 'admin' ? '/admin' : '/'
+  const navigateTo = useCallback((path) => {
     window.history.pushState({}, '', path)
-    setCurrentView(view)
+    setRoute(parseRoute(path))
   }, [])
 
-  const handleSimulationStart = useCallback(() => {
-    setIsSimulationStarted(true)
-    setShowResults(false)
-  }, [])
+  // Map route view to sidebar view
+  const currentView = route.view
 
-  const handleSimulationEnd = useCallback((resultData) => {
-    setShowResults(true)
-    setResults(resultData)
-  }, [])
-
-  const handleNewSession = useCallback(() => {
-    setShowResults(false)
-    setResults(null)
-  }, [])
-
-  // Render Admin view
-  if (currentView === 'admin') {
-    return (
-      <ToastProvider>
-        <div className="container">
-          <AdminPage onBack={() => navigateTo('simulator')} />
-          <ToastContainer />
-        </div>
-      </ToastProvider>
-    )
-  }
-
-  // Render Simulator view
   return (
     <ToastProvider>
-      <SessionProvider>
-        <div className="container">
-          <Header onAdminClick={() => navigateTo('admin')} />
-          <SetupPanel 
-            onSimulationStart={handleSimulationStart}
-            isCollapsed={isSimulationStarted}
-          />
-          {isSimulationStarted && (
-            <MainContent 
-              onSimulationEnd={handleSimulationEnd}
-              onNewSession={handleNewSession}
+      <MainLayout currentView={currentView} onNavigate={(view) => {
+        if (view === 'trajectory') navigateTo('/trajectory')
+        else if (view === 'environments') navigateTo('/env-config')
+        else navigateTo('/')
+      }}>
+        {route.view === 'trajectory' ? (
+          <AdminPage />
+        ) : route.view === 'environments' ? (
+          <EnvironmentsPage />
+        ) : route.view === 'simulation' ? (
+          <SessionProvider>
+            <SimulationPage 
+              trajectoryId={route.trajectoryId} 
+              onNavigate={navigateTo}
             />
-          )}
-          {showResults && (
-            <ResultsPanel 
-              results={results}
-              onNewSession={handleNewSession}
-            />
-          )}
-          <ToastContainer />
-        </div>
-      </SessionProvider>
+            <ToastContainer />
+          </SessionProvider>
+        ) : (
+          <div className="simulator-page">
+            <Header />
+            <SetupPanel onNavigate={navigateTo} />
+          </div>
+        )}
+        {route.view !== 'simulation' && <ToastContainer />}
+      </MainLayout>
     </ToastProvider>
   )
 }

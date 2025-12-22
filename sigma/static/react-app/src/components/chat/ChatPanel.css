@@ -4,11 +4,46 @@
   display: flex;
   flex-direction: column;
   height: calc(100vh - 100px);
-  min-height: 800px;
+  min-height: 600px;
+  overflow: hidden;
 }
 
 .chat-messages {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 20px;
+  overscroll-behavior: contain;
+  overscroll-behavior-x: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+/* Mobile-friendly chat layout */
+@media (max-width: 768px) {
+  .chat-panel {
+    height: calc(100vh - 140px);
+    min-height: 400px;
+    border-radius: 8px;
+  }
+  
+  .chat-messages {
+    padding: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .chat-panel {
+    height: calc(100vh - 110px);
+    min-height: 300px;
+    border-radius: 0;
+    margin: 0 -10px;
+    width: calc(100% + 20px);
+    border: none;
+  }
+  
+  .chat-messages {
+    padding: 8px;
+    padding-bottom: 12px;
+  }
 }

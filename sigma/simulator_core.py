@@ -18,16 +18,22 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Dict, List, Optional, Callable, TYPE_CHECKING
 
 from litellm import completion
 
 from sigma.envs.base import Env
 from sigma.envs.user import UserStrategy
 
+# Type hints for TrajectoryData without circular imports
+if TYPE_CHECKING:
+    from sigma.trajectory_storage import TrajectoryData, TrajectoryMessage
 
 # Debug flag - set via environment variable
 DEBUG_SIMULATOR = os.environ.get("DEBUG_SIMULATOR", "false").lower() == "true"
+
+# Agent generation logging - logs all agent-side LLM calls (parse action, generate response)
+LOG_AGENT_GENERATION = os.environ.get("LOG_AGENT_GENERATION", "true").lower() == "true"
 
 
 def _debug_log(message: str):
@@ -35,6 +41,42 @@ def _debug_log(message: str):
     if DEBUG_SIMULATOR:
         timestamp = time.strftime("%H:%M:%S")
         print(f"[{timestamp}] [SIMULATOR] {message}")
+
+
+def _log_agent_generation(operation: str, model: str, provider: str, prompt_preview: str = None, response: str = None):
+    """Log agent-side LLM generation calls."""
+    if not LOG_AGENT_GENERATION:
+        return
+    
+    timestamp = time.strftime("%H:%M:%S")
+    print(f"\n{'='*60}")
+    print(f"[{timestamp}] 🤖 AGENT GENERATION: {operation}")
+    print(f"{'='*60}")
+    print(f"Model: {model} ({provider})")
+    
+    if prompt_preview:
+        # Show a preview of the prompt (last part is most relevant)
+        preview_lines = prompt_preview.strip().split('\n')
+        if len(preview_lines) > 10:
+            print(f"Prompt (last 10 lines of {len(preview_lines)} total):")
+            for line in preview_lines[-10:]:
+                print(f"  {line[:100]}{'...' if len(line) > 100 else ''}")
+        else:
+            print(f"Prompt:")
+            for line in preview_lines:
+                print(f"  {line[:100]}{'...' if len(line) > 100 else ''}")
+    
+    if response:
+        print(f"\nResponse:")
+        response_lines = response.strip().split('\n')
+        for line in response_lines[:20]:  # Show first 20 lines
+            print(f"  {line}")
+        if len(response_lines) > 20:
+            print(f"  ... ({len(response_lines) - 20} more lines)")
+    
+    print(f"{'='*60}\n")
+
+
 from sigma.types import Action, RESPOND_ACTION_NAME, EnvResponse
 
 from sigma.env_registry import (
@@ -233,6 +275,141 @@ class SimulatorCore:
         self._on_simulation_end: Optional[Callable[[Dict], None]] = None
         
         _debug_log(f"Session {self.session_id[:8]}... initialized in {time.time() - init_start:.2f}s")
+
+    @classmethod
+    def from_trajectory(
+        cls,
+        trajectory: "TrajectoryData",
+        user_model: Optional[str] = None,
+        user_provider: Optional[str] = None,
+        agent_model: Optional[str] = None,
+        agent_provider: Optional[str] = None,
+    ) -> "SimulatorCore":
+        """
+        Create a SimulatorCore instance from saved trajectory data.
+        
+        This is the primary method for resuming simulations from saved state.
+        It properly restores:
+        - Environment configuration
+        - Persona data (user profile, orders, augmented data)
+        - Conversation history
+        - Done state and rewards
+        
+        Args:
+            trajectory: TrajectoryData object (from storage or constructed)
+            user_model: Override user model (uses trajectory's model if not provided)
+            user_provider: Override user provider
+            agent_model: Override agent model
+            agent_provider: Override agent provider
+            
+        Returns:
+            Fully initialized SimulatorCore ready for continued simulation
+        """
+        # Import here to avoid circular imports
+        from sigma.trajectory_storage import TrajectoryData
+        
+        _debug_log(f"Creating simulator from trajectory {trajectory.session_id[:8]}...")
+        
+        # Use trajectory's models or provided overrides
+        effective_user_model = user_model or trajectory.user_model
+        effective_user_provider = user_provider or trajectory.user_provider
+        effective_agent_model = agent_model or trajectory.agent_model
+        effective_agent_provider = agent_provider or trajectory.agent_provider
+        
+        # Create the simulator with full persona_data from trajectory
+        # Use the trajectory ID as the session ID for continuity
+        simulator = cls(
+            env_name=trajectory.env_name,
+            user_model=effective_user_model,
+            user_provider=effective_user_provider,
+            agent_model=effective_agent_model,
+            agent_provider=effective_agent_provider,
+            persona=trajectory.persona or None,
+            persona_data=trajectory.persona_data,  # Full persona data including augmented_data
+            task_index=trajectory.task_index,
+            task_split=trajectory.task_split or "test",
+            session_id=trajectory.id,  # Use trajectory ID as session ID for continuity
+            generate_scenario=False,  # Don't generate new scenario when resuming
+        )
+        
+        # Store the original trajectory ID for reference
+        simulator._source_trajectory_id = trajectory.id
+        
+        # Note: wiki is loaded automatically by the environment from policy.md
+        # No need to restore it from trajectory as it's environment-specific
+        
+        # Initialize user's message state with the persona instruction
+        # This is critical for continued conversations - without this, the user
+        # simulation won't have the system prompt or conversation context
+        simulator.env.user.reset(instruction=simulator.persona or simulator.env.task.instruction)
+        
+        # Restore conversation history
+        simulator.restore_conversation(trajectory.messages)
+        
+        # Restore done state
+        simulator.state.is_done = trajectory.is_done
+        if trajectory.is_done:
+            simulator.state.last_reward = trajectory.reward
+            simulator.state.reward_info = trajectory.reward_info
+        
+        # Restore expected actions if available
+        if trajectory.expected_actions:
+            simulator.state.expected_actions = trajectory.expected_actions
+        
+        _debug_log(f"Restored {len(trajectory.messages)} messages, is_done={trajectory.is_done}")
+        
+        return simulator
+
+    def restore_conversation(self, messages: List["TrajectoryMessage"]) -> None:
+        """
+        Restore conversation history from trajectory messages.
+        
+        This clears any existing conversation and rebuilds from the saved messages.
+        Also rebuilds the user simulation's internal message state so it can
+        continue generating contextually appropriate responses.
+        
+        Args:
+            messages: List of TrajectoryMessage objects from saved trajectory
+        """
+        from sigma.trajectory_storage import TrajectoryMessage
+        
+        # Clear existing conversation
+        self.state.conversation_history.clear()
+        
+        for msg in messages:
+            # Handle both TrajectoryMessage objects and dicts
+            if isinstance(msg, TrajectoryMessage):
+                role = msg.role
+                content = msg.content
+                tool_name = msg.tool_name
+                tool_arguments = msg.tool_arguments
+            else:
+                role = msg.get('role', '')
+                content = msg.get('content', '')
+                tool_name = msg.get('tool_name')
+                tool_arguments = msg.get('tool_arguments')
+            
+            if role == 'user':
+                self._add_conversation_entry('user', content=content)
+                # Also add to user simulation's message history
+                # The user's (customer's) messages are stored as "assistant" role in the LLM context
+                # (since the LLM is playing the customer role)
+                self.env.user.messages.append({"role": "assistant", "content": content})
+            elif role == 'agent':
+                if tool_name:
+                    self._add_conversation_entry('agent', tool_call={'name': tool_name, 'arguments': tool_arguments})
+                else:
+                    self._add_conversation_entry('agent', content=content)
+                    # Agent text responses need to be added to user's context as "user" role
+                    # (input to the LLM that plays the customer)
+                    self.env.user.messages.append({"role": "user", "content": f"The customer service agent says: {content}\n\nGenerate your response as the customer."})
+            elif role == 'tool':
+                # Tool call entry (legacy format - tool calls are now in agent messages)
+                if tool_name:
+                    self._add_conversation_entry('agent', tool_call={'name': tool_name, 'arguments': tool_arguments})
+            elif role == 'tool-result':
+                self._add_conversation_entry('tool', content=content)
+            # Skip 'rejected' and 'system' messages as they don't affect simulation state
 
     def _generate_new_scenario(self) -> None:
         """Generate a new scenario using the ScenarioGenerator."""
@@ -736,7 +913,11 @@ class SimulatorCore:
             "remaining_count": len(self.state.conversation_history)
         }
 
-    def regenerate_user_response(self, additional_note: Optional[str] = None) -> Dict[str, Any]:
+    def regenerate_user_response(
+        self, 
+        rejected_message: Optional[str] = None,
+        feedback: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Regenerate the simulated user's response.
         
@@ -744,7 +925,8 @@ class SimulatorCore:
         (rolling back to that state), then generates a new user response.
         
         Args:
-            additional_note: Optional additional guidance for the user agent.
+            rejected_message: The rejected user message to improve upon.
+            feedback: User's feedback on why the message was rejected.
         
         Returns:
             Dict with success status and new observation (user response).
@@ -797,14 +979,15 @@ class SimulatorCore:
         
         # Store additional note temporarily
         original_persona_note = getattr(self, '_additional_persona_note', None)
-        if additional_note:
-            self._additional_persona_note = additional_note
+        if feedback:
+            self._additional_persona_note = feedback
         
         try:
             # Regenerate user response to the agent message
             new_response = self._generate_user_response_to_message(
                 agent_message_before,
-                additional_note
+                rejected_message=rejected_message,
+                feedback=feedback
             )
             if new_response:
                 self._add_conversation_entry("user", new_response)
@@ -827,36 +1010,96 @@ class SimulatorCore:
     def _generate_user_response_to_message(
         self, 
         agent_message: str,
-        additional_note: Optional[str] = None
+        rejected_message: Optional[str] = None,
+        feedback: Optional[str] = None
     ) -> Optional[str]:
-        """Generate a user response to an agent message."""
-        # Build context for user response generation
-        # Note: self.current_persona already contains the full persona including
-        # the user's task/instruction, so we don't need to add it separately
-        user_prompt_parts = [
-            f"You are playing the role of a customer with the following persona:",
+        """Generate a user response to an agent message.
+        
+        Uses the same prompt structure as the normal user simulation to ensure
+        consistent response style (short, natural, one thing at a time, etc.)
+        This includes conversation history to maintain context.
+        
+        Args:
+            agent_message: The agent message to respond to.
+            rejected_message: Optional rejected response to improve upon.
+            feedback: Optional feedback on why the response was rejected.
+        """
+        # Load user guidelines to match normal user generation behavior
+        user_guidelines = load_env_guidelines(self.env_name, "user_guidelines.md")
+        
+        # Build system prompt similar to the normal user simulation
+        system_prompt_parts = [
+            "# User Simulation Prompt",
+            "",
+            "You are simulating a customer contacting customer service.",
+            "",
+            "## Your Task",
             f"{self.current_persona}",
             "",
-            "The customer service agent just said:",
-            f'"{agent_message}"',
-            "",
-            "Generate a natural response as this customer."
         ]
         
-        if additional_note:
-            user_prompt_parts.extend([
+        # Add environment-specific guidelines if available
+        if user_guidelines:
+            system_prompt_parts.extend([
+                user_guidelines,
                 "",
-                f"IMPORTANT GUIDANCE: {additional_note}"
             ])
         
-        user_prompt = "\n".join(user_prompt_parts)
+        # Add rejection context if regenerating
+        if rejected_message and feedback:
+            system_prompt_parts.extend([
+                "",
+                "## IMPORTANT: Previous Response Rejected",
+                f"Your previous response was: \"{rejected_message}\"",
+                f"Feedback: {feedback}",
+                "",
+                "Generate a NEW response that addresses this feedback while maintaining your persona.",
+                ""
+            ])
+        elif rejected_message:
+            system_prompt_parts.extend([
+                "",
+                "## IMPORTANT: Previous Response Rejected", 
+                f"Your previous response was: \"{rejected_message}\"",
+                "",
+                "Generate a different, improved response.",
+                ""
+            ])
+        elif feedback:
+            system_prompt_parts.extend([
+                "",
+                f"IMPORTANT GUIDANCE FOR THIS RESPONSE: {feedback}"
+            ])
+        
+        system_prompt = "\n".join(system_prompt_parts)
+        
+        # Build message history similar to LLMUserSimulationEnv
+        # In user simulation: "user" role = prompts to model, "assistant" role = customer responses
+        messages = [
+            {"role": "system", "content": system_prompt},
+        ]
+        
+        # Add conversation history (convert from our format to user simulation format)
+        # Skip the last user message since we're regenerating it
+        for entry in self.state.conversation_history:
+            if entry.role == "user":
+                # Customer's previous messages become "assistant" in user simulation
+                messages.append({"role": "assistant", "content": entry.content})
+            elif entry.role == "agent":
+                # Agent's messages become "user" prompts in user simulation
+                if entry.content:
+                    messages.append({"role": "user", "content": f"The customer service agent says: {entry.content}\n\nGenerate your response as the customer."})
+            # Skip tool calls and tool results - they're internal to agent
+        
+        # Add the current agent message we're responding to
+        messages.append({"role": "user", "content": f"The customer service agent says: {agent_message}\n\nGenerate your response as the customer."})
         
         try:
             # Build completion kwargs
             completion_kwargs = {
                 "model": self.user_model,
                 "custom_llm_provider": self.user_provider,
-                "messages": [{"role": "user", "content": user_prompt}],
+                "messages": messages,
             }
             if not self.user_model.startswith("gpt-5"):
                 completion_kwargs["temperature"] = 0.7
@@ -865,7 +1108,7 @@ class SimulatorCore:
                 print(f"\n{'='*80}")
                 print(f"[DEBUG SIMULATOR] _generate_user_response - Sending to {self.user_model} via {self.user_provider}:")
                 print(f"{'='*80}")
-                for i, msg in enumerate(completion_kwargs["messages"]):
+                for i, msg in enumerate(messages):
                     role = msg.get('role', 'unknown')
                     content = msg.get('content', '')
                     print(f"\n--- Message {i+1} [{role.upper()}] ---")
@@ -928,8 +1171,24 @@ class SimulatorCore:
                     print(content)  # Full content, no truncation
                 print(f"{'='*80}\n")
             
+            # Log agent generation
+            _log_agent_generation(
+                operation="Generate Response",
+                model=self.agent_model,
+                provider=self.agent_provider,
+                prompt_preview=f"Prompt: {prompt}"
+            )
+            
             res = completion(**completion_kwargs)
             response = res.choices[0].message.content.strip()
+            
+            # Log agent generation response
+            _log_agent_generation(
+                operation="Generate Response - Result",
+                model=self.agent_model,
+                provider=self.agent_provider,
+                response=response
+            )
             
             if DEBUG_SIMULATOR:
                 print(f"\n{'='*80}")
@@ -984,9 +1243,25 @@ class SimulatorCore:
                     print(content)  # Full content, no truncation
                 print(f"{'='*80}\n")
             
+            # Log agent generation (user input preview)
+            _log_agent_generation(
+                operation="Parse Action",
+                model=self.agent_model,
+                provider=self.agent_provider,
+                prompt_preview=f"User instruction: {user_input}"
+            )
+            
             res = completion(**completion_kwargs)
             
             response_text = res.choices[0].message.content.strip()
+            
+            # Log agent generation response
+            _log_agent_generation(
+                operation="Parse Action - Response",
+                model=self.agent_model,
+                provider=self.agent_provider,
+                response=response_text
+            )
             
             if DEBUG_SIMULATOR:
                 print(f"\n{'='*80}")
@@ -1013,6 +1288,138 @@ class SimulatorCore:
             return None
         except Exception as e:
             print(f"[parse_natural_language_action] Error: {type(e).__name__}: {e}")
+            return None
+
+    def regenerate_action_with_feedback(
+        self,
+        rejected_action: Dict[str, Any],
+        feedback: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Regenerate an agent action considering a previously rejected action and user feedback.
+        
+        Args:
+            rejected_action: The previously rejected action with action_type, content/tool_name, arguments, reasoning
+            feedback: Optional user feedback on why the action was rejected
+            
+        Returns:
+            New parsed action dict with reasoning, action_type and relevant fields.
+        """
+        tools_summary = self._get_tools_summary()
+        context = self._build_agent_context()
+        
+        # Build rejected action description
+        rejected_desc = []
+        if rejected_action.get("action_type") == "respond":
+            rejected_desc.append(f"Type: Text response to customer")
+            rejected_desc.append(f"Response: {rejected_action.get('content', '')}")
+        else:
+            rejected_desc.append(f"Type: Tool call")
+            rejected_desc.append(f"Tool: {rejected_action.get('tool_name', '')}")
+            rejected_desc.append(f"Arguments: {json.dumps(rejected_action.get('arguments', {}), indent=2)}")
+        if rejected_action.get("reasoning"):
+            rejected_desc.append(f"Reasoning: {rejected_action.get('reasoning', '')}")
+        
+        rejected_str = "\n".join(rejected_desc)
+        
+        # Build feedback section
+        feedback_section = ""
+        if feedback:
+            feedback_section = f"\n## Operator Feedback\n{feedback}\n"
+        
+        # Load the base prompt template and modify it
+        template = build_agent_prompt(self.env_name, "action")
+        
+        # Add rejected action context before the output format section
+        rejection_context = f"""
+## Previously Rejected Action
+The following action was rejected by the operator and should NOT be repeated:
+{rejected_str}
+{feedback_section}
+Please generate a DIFFERENT and BETTER action that addresses the operator's concerns.
+"""
+        
+        # Find where to insert the rejection context (before "## Output Format")
+        output_format_idx = template.find("## Output Format")
+        if output_format_idx > 0:
+            template = template[:output_format_idx] + rejection_context + "\n" + template[output_format_idx:]
+        else:
+            # Fallback: append to end of template before replacements
+            template = template + "\n" + rejection_context
+        
+        # Create system prompt with placeholders filled
+        system_prompt = (template
+            .replace("{tools_summary}", tools_summary)
+            .replace("{context}", context)
+            .replace("{user_input}", "Generate a better action based on the context and avoiding the rejected approach"))
+
+        try:
+            # Build completion kwargs - some models don't support temperature
+            completion_kwargs = {
+                "model": self.agent_model,
+                "custom_llm_provider": self.agent_provider,
+                "messages": [{"role": "user", "content": system_prompt}],
+            }
+            # Only add temperature for models that support it (not gpt-5 series)
+            if not self.agent_model.startswith("gpt-5"):
+                completion_kwargs["temperature"] = 0.5  # Slightly higher temp for more variety
+            
+            if DEBUG_SIMULATOR:
+                print(f"\n{'='*80}")
+                print(f"[DEBUG SIMULATOR] regenerate_action_with_feedback - Sending to {self.agent_model} via {self.agent_provider}:")
+                print(f"{'='*80}")
+                for i, msg in enumerate(completion_kwargs["messages"]):
+                    role = msg.get('role', 'unknown')
+                    content = msg.get('content', '')
+                    print(f"\n--- Message {i+1} [{role.upper()}] ---")
+                    print(content)
+                print(f"{'='*80}\n")
+            
+            # Log agent generation
+            _log_agent_generation(
+                operation="Regenerate Action",
+                model=self.agent_model,
+                provider=self.agent_provider,
+                prompt_preview=f"Rejected: {rejected_action.get('action_type')}, Feedback: {feedback or 'None'}"
+            )
+            
+            res = completion(**completion_kwargs)
+            
+            response_text = res.choices[0].message.content.strip()
+            
+            # Log agent generation response
+            _log_agent_generation(
+                operation="Regenerate Action - Response",
+                model=self.agent_model,
+                provider=self.agent_provider,
+                response=response_text
+            )
+            
+            if DEBUG_SIMULATOR:
+                print(f"\n{'='*80}")
+                print(f"[DEBUG SIMULATOR] regenerate_action_with_feedback - Response:")
+                print(f"{'='*80}")
+                print(response_text)
+                print(f"{'='*80}\n")
+            
+            # Extract JSON from response
+            if "```json" in response_text:
+                json_start = response_text.find("```json") + 7
+                json_end = response_text.find("```", json_start)
+                response_text = response_text[json_start:json_end]
+            elif "```" in response_text:
+                json_start = response_text.find("```") + 3
+                json_end = response_text.find("```", json_start)
+                response_text = response_text[json_start:json_end]
+            
+            return json.loads(response_text.strip())
+            
+        except json.JSONDecodeError as e:
+            print(f"[regenerate_action_with_feedback] JSON decode error: {e}")
+            print(f"[regenerate_action_with_feedback] Response text: {response_text[:500] if 'response_text' in dir() else 'N/A'}")
+            return None
+        except Exception as e:
+            print(f"[regenerate_action_with_feedback] Error: {type(e).__name__}: {e}")
             return None
 
     def _build_agent_context(self) -> str:
@@ -1165,6 +1572,40 @@ class SimulatorSessionManager:
             task_split=task_split,
             generate_scenario=generate_scenario,
             task_ids=task_ids,
+        )
+        self._sessions[simulator.session_id] = simulator
+        return simulator
+
+    def create_from_trajectory(
+        self,
+        trajectory: "TrajectoryData",
+        user_model: Optional[str] = None,
+        user_provider: Optional[str] = None,
+        agent_model: Optional[str] = None,
+        agent_provider: Optional[str] = None,
+    ) -> SimulatorCore:
+        """
+        Create a new session from saved trajectory data.
+        
+        This is the recommended way to resume a simulation from saved state.
+        It uses SimulatorCore.from_trajectory() to properly restore all state.
+        
+        Args:
+            trajectory: TrajectoryData object (from storage or constructed)
+            user_model: Override user model (uses trajectory's model if not provided)
+            user_provider: Override user provider
+            agent_model: Override agent model
+            agent_provider: Override agent provider
+            
+        Returns:
+            SimulatorCore instance ready for continued simulation
+        """
+        simulator = SimulatorCore.from_trajectory(
+            trajectory=trajectory,
+            user_model=user_model,
+            user_provider=user_provider,
+            agent_model=agent_model,
+            agent_provider=agent_provider,
         )
         self._sessions[simulator.session_id] = simulator
         return simulator

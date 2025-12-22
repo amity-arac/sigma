@@ -5,9 +5,12 @@ import enum
 import os
 import time
 from litellm import completion
+from dotenv import load_dotenv
 
 from typing import Optional, List, Dict, Any, Union
 
+# Load .env file before reading environment variables
+load_dotenv()
 
 # Debug flag - set to True to see prompts sent to LLM
 DEBUG_USER_PROMPTS = os.environ.get("DEBUG_USER_PROMPTS", "false").lower() == "true"
@@ -157,10 +160,11 @@ class LLMUserSimulationEnv(BaseUserSimulationEnv):
         ]
 
     def step(self, content: str) -> str:
-        # Agent's message comes as "user" role in this inverted setup
-        # We add the agent response, then ask for next user message
-        self.messages.append({"role": "assistant", "content": content})
-        self.messages.append({"role": "user", "content": "Continue the conversation. What do you say next?"})
+        # In the user simulation, the LLM plays the customer role:
+        # - "user" role = input/prompts to the model (what the agent says)
+        # - "assistant" role = model's output (what the customer says)
+        # So the agent's message should be "user" role, not "assistant"
+        self.messages.append({"role": "user", "content": f"The customer service agent says: {content}\n\nGenerate your response as the customer."})
         return self.generate_next_message(self.messages)
 
     def get_total_cost(self) -> float:

@@ -2,13 +2,15 @@
 """
 Generic Environment Loader
 
-This module provides shared loading functions for all environments in sigma/envs.
-Each environment folder should contain only data/content files (no Python):
+This module provides shared loading functions for all environments.
+
+Data files are stored in data/envs/<env_name>/:
 - db.json: Database with environment data
 - tasks.json: Tasks in the standard format
-- split_tasks.json: (optional) Task splits for train/test/dev
-- policy.html or policy.md: Agent policy
+- policy.md: Agent policy (includes behavioral rules)
 - user_guidelines.md: (optional) User simulation guidelines
+
+Source files (tools.py) are stored in sigma/envs/<env_name>/.
 """
 
 import json
@@ -20,8 +22,14 @@ from sigma.envs.user import UserStrategy
 from sigma.types import Task, Action
 
 
-# Path to environments folder
-ENVS_PATH = os.path.dirname(__file__)
+# Path to data environments folder (data files: db.json, tasks.json, policy.md, etc.)
+DATA_ENVS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "envs")
+
+# Path to source environments folder (tools.py only)
+SOURCE_ENVS_PATH = os.path.dirname(__file__)
+
+# Legacy alias
+ENVS_PATH = DATA_ENVS_PATH
 
 
 def load_env_data(env_name: str) -> Dict[str, Any]:
@@ -33,30 +41,17 @@ def load_env_data(env_name: str) -> Dict[str, Any]:
 
 
 def load_env_tasks(env_name: str, split: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Load tasks from tasks.json, optionally filtered by split."""
+    """Load tasks from tasks.json for an environment.
+    
+    Args:
+        env_name: Name of the environment
+        split: Ignored (kept for API compatibility)
+    """
     env_path = os.path.join(ENVS_PATH, env_name)
     tasks_path = os.path.join(env_path, "tasks.json")
     
     with open(tasks_path, "r") as f:
-        all_tasks = json.load(f)
-    
-    if split is None:
-        return all_tasks
-    
-    # Load split configuration
-    split_path = os.path.join(env_path, "split_tasks.json")
-    if not os.path.exists(split_path):
-        return all_tasks
-    
-    with open(split_path, "r") as f:
-        splits = json.load(f)
-    
-    if split not in splits:
-        return all_tasks
-    
-    # Filter tasks by split
-    split_ids = set(splits[split])
-    return [task for task in all_tasks if str(task.get("id")) in split_ids]
+        return json.load(f)
 
 
 def load_env_policy(env_name: str) -> str:
@@ -183,15 +178,15 @@ def create_generic_env_class(env_name: str):
     Create a generic environment class for the given environment.
     
     This dynamically creates an Env subclass that loads data from the
-    environment's data files.
+    environment's data files in data/envs/<env_name>/ and tools from
+    sigma/envs/<env_name>/tools.py.
     """
-    # Import tools and rules from sigma retail env (shared across environments)
-    # For now, use retail tools as default - can be made configurable via config.json
-    from sigma.envs.retail.tools import ALL_TOOLS
-    from sigma.envs.retail.rules import RULES
+    # Import tools from env's tools.py in source directory
+    tools_module = __import__(f"sigma.envs.{env_name}.tools", fromlist=["ALL_TOOLS"])
+    ALL_TOOLS = tools_module.ALL_TOOLS
     
-    # Get the path to this environment's folder
-    env_path = os.path.join(ENVS_PATH, env_name)
+    # Get the path to this environment's data folder
+    env_path = os.path.join(DATA_ENVS_PATH, env_name)
     
     class GenericDomainEnv(Env):
         """Generic environment that loads data from JSON/MD files."""
@@ -223,7 +218,6 @@ def create_generic_env_class(env_name: str):
                 tools=ALL_TOOLS,
                 tasks=tasks,
                 wiki=wiki,
-                rules=RULES,
                 user_strategy=user_strategy,
                 user_model=user_model,
                 user_provider=user_provider,

@@ -27,3 +27,59 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Mobile-friendly input */
+@media (max-width: 768px) {
+  .chat-input {
+    padding: 10px 14px;
+  }
+  
+  .input-container {
+    gap: 8px;
+  }
+  
+  .input-container input {
+    flex: 1;
+    padding: 10px 12px;
+    font-size: 16px; /* Prevents iOS zoom on focus */
+    border-radius: 8px;
+  }
+  
+  .input-container .btn {
+    min-width: 0;
+    padding: 10px 14px;
+    font-size: 0.85em;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .chat-input {
+    padding: 8px 10px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  
+  .input-container {
+    gap: 6px;
+  }
+  
+  .input-container input {
+    flex: 1;
+    min-width: 0;
+    padding: 10px;
+    font-size: 16px;
+  }
+  
+  .input-container input::placeholder {
+    font-size: 0.8em;
+  }
+  
+  .input-container .btn {
+    padding: 10px 14px;
+    font-size: 0.85em;
+    border-radius: 8px;
+  }
+}

@@ -96,6 +96,7 @@ class TrajectoryData(BaseModel):
     1. Analytics - easy to query and aggregate
     2. Training data transformation - convert to chat format, DPO pairs, etc.
     3. Debugging - full context of what happened in a session
+    4. Session resumption - can restore full state including injected data
     """
     id: Optional[str] = None
     session_id: str
@@ -119,6 +120,11 @@ class TrajectoryData(BaseModel):
     # Session data
     persona: str
     wiki: str
+    
+    # Full persona data for session resumption
+    # Contains: user profile, orders/reservations, augmented_data (products, etc.)
+    # This enables proper restoration of environment state when resuming
+    persona_data: Optional[Dict[str, Any]] = None
     
     # Conversation (includes rejected suggestions inline with role='rejected')
     messages: List[TrajectoryMessage]
@@ -379,11 +385,26 @@ class BlobStorageBackend(StorageBackend):
             if blob.name.endswith('.json'):
                 parts = blob.name.replace('.json', '').split('/')
                 if len(parts) >= 2:
-                    results.append({
-                        "id": parts[-1],
-                        "env_name": parts[0],
-                        "blob_name": blob.name,
-                    })
+                    # Read the blob to get full trajectory data
+                    try:
+                        blob_client = container.get_blob_client(blob.name)
+                        data = json.loads(blob_client.download_blob().readall())
+                        results.append({
+                            "id": data.get("id", parts[-1]),
+                            "session_id": data.get("session_id"),
+                            "env_name": data.get("env_name", parts[0]),
+                            "created_at": data.get("created_at"),
+                            "is_done": data.get("is_done"),
+                            "reward": data.get("reward"),
+                            "user_id": data.get("user_id"),
+                        })
+                    except Exception:
+                        # Fallback if we can't read the blob
+                        results.append({
+                            "id": parts[-1],
+                            "env_name": parts[0],
+                            "blob_name": blob.name,
+                        })
         
         return results
     

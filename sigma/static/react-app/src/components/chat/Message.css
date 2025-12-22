@@ -172,3 +172,193 @@
   border-left: 3px solid var(--primary);
   opacity: 0.9;
 }
+
+/* Mobile-friendly messages */
+@media (max-width: 768px) {
+  .message {
+    margin-bottom: 10px;
+  }
+  
+  .message-content {
+    padding: 10px 12px;
+    font-size: 0.88em;
+    border-radius: 8px;
+    border-left-width: 2px;
+  }
+  
+  .message-header {
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  
+  .message-icon {
+    font-size: 0.95em;
+  }
+  
+  .message-role {
+    font-size: 0.8em;
+  }
+  
+  .message-actions {
+    opacity: 1; /* Always show on mobile for touch */
+  }
+  
+  .message-action-btn {
+    width: 22px;
+    height: 22px;
+    font-size: 0.7em;
+  }
+  
+  .reasoning-toggle {
+    padding: 3px 8px;
+    font-size: 0.68em;
+  }
+  
+  .message-reasoning {
+    padding: 8px 10px;
+    margin-bottom: 6px;
+  }
+  
+  .reasoning-label {
+    font-size: 0.68em;
+    margin-bottom: 4px;
+  }
+  
+  .reasoning-content {
+    font-size: 0.78em;
+    max-height: 100px;
+  }
+}
+
+@media (max-width: 480px) {
+  .message {
+    margin-bottom: 8px;
+  }
+  
+  .message-header {
+    margin-bottom: 3px;
+  }
+  
+  .message-icon {
+    font-size: 0.9em;
+  }
+  
+  .message-role {
+    font-size: 0.75em;
+  }
+  
+  .message-content {
+    padding: 8px 10px;
+    font-size: 0.82em;
+    line-height: 1.45;
+  }
+  
+  .message.tool .message-content {
+    font-size: 0.75em;
+    overflow-x: auto;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  
+  .message-action-btn {
+    width: 20px;
+    height: 20px;
+  }
+  
+  .reasoning-toggle {
+    padding: 2px 6px;
+    font-size: 0.65em;
+    border-radius: 10px;
+  }
+  
+  .message-reasoning {
+    padding: 6px 8px;
+    border-left-width: 2px;
+  }
+  
+  .reasoning-content {
+    font-size: 0.72em;
+    max-height: 80px;
+  }
+}
+
+/* Rejected message styles */
+.message.rejected .message-role { color: var(--error); }
+
+.message.rejected .message-content {
+  border-left: 3px solid var(--error);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.message-action-btn.remove-btn:hover {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.rejected-summary {
+  color: var(--text-secondary);
+}
+
+.rejected-summary .hint {
+  font-size: 0.85em;
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* Rejected details panel (collapsible) */
+.rejected-details-panel {
+  background: var(--darker);
+  border-left: 3px solid var(--error);
+  border-radius: 0 8px 8px 0;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  animation: slideDown 0.2s ease;
+}
+
+.rejected-type-label {
+  font-size: 0.75em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--error);
+  margin-bottom: 10px;
+}
+
+.rejected-detail-section {
+  margin-bottom: 10px;
+}
+
+.rejected-detail-section:last-child {
+  margin-bottom: 0;
+}
+
+.rejected-detail-label {
+  font-size: 0.72em;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.rejected-detail-content {
+  font-size: 0.85em;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.rejected-detail-content.reasoning {
+  font-style: italic;
+  color: var(--muted);
+}
+
+.rejected-detail-content.code {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 0.8em;
+  background: var(--bg-primary);
+  padding: 8px 10px;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+

@@ -6,9 +6,15 @@ function ChatInput({ onSend, onAutoGenerate, disabled }) {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    if (message.trim() && !disabled) {
+    if (disabled) return
+    
+    if (message.trim()) {
+      // If there's text, send the custom message
       onSend(message.trim())
       setMessage('')
+    } else {
+      // If no text, trigger auto-generate
+      onAutoGenerate()
     }
   }
 
@@ -27,24 +33,16 @@ function ChatInput({ onSend, onAutoGenerate, disabled }) {
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyPress={handleKeyPress}
-          placeholder="Describe any action (respond, call tool, etc.)..."
+          placeholder="Describe action or leave empty for auto..."
           disabled={disabled}
         />
         <button 
           type="submit" 
-          className="btn btn-success"
-          disabled={disabled || !message.trim()}
-        >
-          Generate Action
-        </button>
-        <button 
-          type="button"
           className="btn btn-auto"
-          onClick={onAutoGenerate}
           disabled={disabled}
-          title="Auto-generate action based on wiki/policy"
+          title={message.trim() ? 'Generate action from your description' : 'Auto-generate action based on wiki/policy'}
         >
-          🤖 Auto
+          🤖 <span className="btn-text">{message.trim() ? 'Go' : 'Auto'}</span>
         </button>
       </form>
     </div>

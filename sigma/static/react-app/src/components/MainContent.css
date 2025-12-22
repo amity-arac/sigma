@@ -15,4 +15,21 @@
   .main-content {
     grid-template-columns: 1fr;
   }
+  
+  /* Hide desktop sidebar on tablet/mobile */
+  .main-content .side-panel {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .main-content {
+    gap: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .main-content {
+    gap: 0;
+  }
 }

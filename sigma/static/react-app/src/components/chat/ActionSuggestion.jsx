@@ -5,7 +5,7 @@ function ActionSuggestion({ action, onApprove, onReject }) {
     if (action.action_type === 'respond') {
       return '📝 Suggested Response'
     }
-    return `🔧 Suggested Tool Call: ${action.tool_name}`
+    return '🔧 Suggested Tool Call'
   }
 
   return (
@@ -32,12 +32,20 @@ function ActionSuggestion({ action, onApprove, onReject }) {
             </div>
           </div>
         ) : (
-          <div className="action-suggestion-section">
-            <div className="action-suggestion-label tool">Arguments</div>
-            <div className="action-suggestion-content code">
-              {JSON.stringify(action.arguments, null, 2)}
+          <>
+            <div className="action-suggestion-section">
+              <div className="action-suggestion-label tool">🔧 Tool Name</div>
+              <div className="action-suggestion-content tool-name">
+                {action.tool_name}
+              </div>
             </div>
-          </div>
+            <div className="action-suggestion-section">
+              <div className="action-suggestion-label tool">Arguments</div>
+              <div className="action-suggestion-content code">
+                {JSON.stringify(action.arguments, null, 2)}
+              </div>
+            </div>
+          </>
         )}
       </div>
       

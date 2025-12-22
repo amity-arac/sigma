@@ -3,18 +3,21 @@
 Environment Registry for Sigma
 
 This module provides a registry system for environments that AUTO-DETECTS
-available environments from the sigma/envs/ folder.
+available environments from the data/envs/ folder.
 
 An environment is detected if it has:
 - db.json: Combined database
 - tasks.json: Tasks in the new format
-- policy.md: Agent policy
-- split_tasks.json: Train/test/dev splits (optional)
+- policy.md: Agent policy (includes behavioral rules)
 
 To add a new environment:
-1. Create a new folder under sigma/envs/<env_name>/
+1. Create a new folder under data/envs/<env_name>/
 2. Add the required files (db.json, tasks.json, policy.md)
 3. The environment will be automatically detected and registered
+
+Data files are kept separate from source code:
+- data/envs/<env_name>/ - Contains customizable data files (db.json, tasks.json, etc.)
+- sigma/envs/<env_name>/ - Contains only tools.py with Python tool implementations
 """
 
 from dataclasses import dataclass, field
@@ -23,8 +26,15 @@ import os
 import json
 
 
-# Path to environments folder
-ENVS_PATH = os.path.join(os.path.dirname(__file__), "envs")
+# Path to data environments folder (data files: db.json, tasks.json, policy.md, etc.)
+# This is at root/data/envs, separate from source code
+DATA_ENVS_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "envs")
+
+# Path to source environments folder (tools.py only)
+SOURCE_ENVS_PATH = os.path.join(os.path.dirname(__file__), "envs")
+
+# Legacy alias for backward compatibility
+ENVS_PATH = DATA_ENVS_PATH
 
 
 @dataclass
@@ -339,20 +349,11 @@ def _create_env_tasks_loader(env_name: str):
     def loader(split: str):
         env_path = os.path.join(ENVS_PATH, env_name)
         tasks_path = os.path.join(env_path, "tasks.json")
-        split_path = os.path.join(env_path, "split_tasks.json")
         
         with open(tasks_path, "r") as f:
             all_tasks = json.load(f)
         
-        # If split_tasks.json exists, filter by split
-        if os.path.exists(split_path):
-            with open(split_path, "r") as f:
-                splits = json.load(f)
-            if split in splits:
-                split_ids = set(splits[split])
-                return [task for task in all_tasks if str(task.get("id")) in split_ids]
-        
-        # Return all tasks if no split filtering
+        # Return all tasks (split parameter kept for API compatibility)
         return all_tasks
     return loader
 
@@ -367,14 +368,7 @@ def _create_env_class_loader(env_name: str):
 
 def _get_task_splits(env_name: str) -> List[str]:
     """Get available task splits for an environment."""
-    env_path = os.path.join(ENVS_PATH, env_name)
-    split_path = os.path.join(env_path, "split_tasks.json")
-    
-    if os.path.exists(split_path):
-        with open(split_path, "r") as f:
-            splits = json.load(f)
-        return list(splits.keys())
-    
+    # Task splits feature removed - all tasks are in one set
     return ["test"]
 
 
@@ -441,8 +435,7 @@ def create_sigma_environment(env_name: str, output_dir: str = None):
     Sigma environments contain only data/content files:
     - db.json: Database
     - tasks.json: Tasks
-    - split_tasks.json: Train/test/dev splits
-    - policy.html or policy.md: Agent policy
+    - policy.md: Agent policy (includes behavioral rules)
     - user_guidelines.md: (optional) User simulation guidelines
     
     No Python files - all logic is in sigma.envs.generic_env module.
@@ -463,8 +456,7 @@ def create_sigma_environment(env_name: str, output_dir: str = None):
     templates = {
         "db.json": '{\n    "users": {},\n    "products": {},\n    "orders": {}\n}\n',
         "tasks.json": '[\n    {\n        "id": "1",\n        "user_scenario": {\n            "instructions": {\n                "known_info": "You are user_123",\n                "reason_for_call": "You want to check your order status",\n                "unknown_info": "",\n                "task_instructions": "Be polite and provide information when asked"\n            }\n        },\n        "evaluation_criteria": {\n            "actions": [],\n            "communicate_info": []\n        }\n    }\n]\n',
-        "split_tasks.json": '{\n    "train": ["1"],\n    "test": ["1"],\n    "dev": ["1"]\n}\n',
-        "policy.md": f'# {env_name.title()} Agent Policy\n\n## Overview\n\nDescribe the agent policy here.\n\n## Guidelines\n\n- Guideline 1\n- Guideline 2\n',
+        "policy.md": f'# {env_name.title()} Agent Policy\n\n## Overview\n\nDescribe the agent policy here.\n\n## Behavioral Rules\n\n- Rule 1: Always verify user identity first\n- Rule 2: Get explicit confirmation before making changes\n\n## Guidelines\n\n- Guideline 1\n- Guideline 2\n',
         "user_guidelines.md": f'# {env_name.title()} User Simulation Guidelines\n\n## Behavior\n\nDescribe how the simulated user should behave.\n',
     }
     

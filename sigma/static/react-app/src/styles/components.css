@@ -154,3 +154,43 @@
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
+
+/* Mobile-friendly components */
+@media (max-width: 768px) {
+  .btn {
+    padding: 10px 16px;
+    font-size: 0.9em;
+  }
+  
+  .form-row {
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  
+  .form-group {
+    min-width: 100%;
+  }
+  
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    padding: 10px;
+    font-size: 16px; /* Prevents iOS zoom */
+  }
+}
+
+@media (max-width: 480px) {
+  .btn {
+    padding: 10px 14px;
+    font-size: 0.85em;
+  }
+  
+  .form-row {
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  
+  .form-group label {
+    font-size: 0.85em;
+  }
+}

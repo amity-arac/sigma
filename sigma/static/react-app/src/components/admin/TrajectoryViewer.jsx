@@ -19,7 +19,7 @@ const ROLE_NAMES = {
   rejected: 'Rejected Suggestion'
 }
 
-function TrajectoryViewer({ trajectory, onClose, onDelete, onMarkComplete }) {
+function TrajectoryViewer({ trajectory, onClose, onDelete, onMarkComplete, onSimulate }) {
   const [activeTab, setActiveTab] = useState('conversation')
   const [expandedMessages, setExpandedMessages] = useState(new Set())
 
@@ -283,6 +283,11 @@ function TrajectoryViewer({ trajectory, onClose, onDelete, onMarkComplete }) {
         </div>
 
         <div className="viewer-footer">
+          {onSimulate && (
+            <button className="simulate-button" onClick={onSimulate}>
+              ▶️ Continue Simulation
+            </button>
+          )}
           <button className="delete-button" onClick={onDelete}>
             🗑️ Delete Trajectory
           </button>

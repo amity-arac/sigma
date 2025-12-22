@@ -15,13 +15,14 @@ Usage:
 
 import json
 import os
+import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -31,15 +32,17 @@ from sigma.simulator_core import (
     get_available_environments,
     load_persona_file,
 )
-from sigma.env_registry import get_environment_config, list_environments
+from sigma.env_registry import get_environment_config, list_environments, DATA_ENVS_PATH
 from sigma.trajectory_storage import (
     TrajectoryStorage,
     TrajectoryData,
     TrajectoryMessage,
+    RejectedSuggestion,
     get_trajectory_storage,
     get_configured_backend,
     check_storage_configuration,
 )
+from sigma.trajectory import Trajectory, TrajectoryError
 
 
 # =============================================================================
@@ -151,6 +154,8 @@ class SaveTrajectoryMessageRequest(BaseModel):
 class SaveTrajectoryRequest(BaseModel):
     """Request to save a trajectory."""
     messages: List[SaveTrajectoryMessageRequest]
+    # Optional trajectory_id to update existing trajectory (for continued sessions)
+    trajectory_id: Optional[str] = None
     # Final result info (optional, will be fetched from session if not provided)
     is_done: Optional[bool] = None
     reward: Optional[float] = None
@@ -163,6 +168,29 @@ class SaveTrajectoryResponse(BaseModel):
     trajectory_id: Optional[str] = None
     backend: Optional[str] = None
     error: Optional[str] = None
+
+
+class ContinueTrajectoryRequest(BaseModel):
+    """Request to continue from an existing trajectory."""
+    trajectory_id: str
+    env_name: str
+    user_model: str = "gpt-4o"
+    user_provider: str = "openai"
+    agent_model: Optional[str] = None
+    agent_provider: Optional[str] = None
+
+
+class ContinueTrajectoryResponse(BaseModel):
+    """Response when continuing from a trajectory."""
+    session_id: str
+    trajectory_id: str
+    env_name: str
+    initial_message: str
+    persona: str
+    tools: List[Dict[str, Any]]
+    wiki: str
+    messages: List[Dict[str, Any]]  # Previous messages to restore
+    is_done: bool
 
 
 class UpdateTrajectoryRequest(BaseModel):
@@ -206,6 +234,33 @@ class EnvironmentInfo(BaseModel):
     description: str
 
 
+class EnvironmentFileInfo(BaseModel):
+    """Information about a file in an environment."""
+    name: str
+    type: str  # 'json', 'markdown', 'text'
+    size: int
+    description: str
+
+
+class EnvironmentFilesResponse(BaseModel):
+    """Response containing list of environment files."""
+    env_name: str
+    files: List[EnvironmentFileInfo]
+
+
+class EnvironmentFileContentResponse(BaseModel):
+    """Response containing file content."""
+    env_name: str
+    filename: str
+    content: str
+    type: str
+
+
+class UpdateEnvironmentFileRequest(BaseModel):
+    """Request to update an environment file."""
+    content: str
+
+
 class ToolInfoResponse(BaseModel):
     """Information about a tool."""
     name: str
@@ -218,8 +273,87 @@ class ToolInfoResponse(BaseModel):
 # Application Setup
 # =============================================================================
 
-# Session manager (global state)
+# Session manager (global state) - caches simulators by trajectory_id
 session_manager = SimulatorSessionManager()
+
+
+def get_simulator_for_trajectory(trajectory_id: str) -> SimulatorCore:
+    """
+    Get or create a simulator for a trajectory.
+    
+    This is the core helper for the trajectory-centric API:
+    1. Check if simulator is already cached (for performance)
+    2. If not, load trajectory from storage and create simulator
+    3. Cache and return the simulator
+    
+    Args:
+        trajectory_id: The trajectory ID
+        
+    Returns:
+        SimulatorCore instance ready for operations
+        
+    Raises:
+        HTTPException: If trajectory not found
+    """
+    # Check cache first
+    simulator = session_manager.get_session(trajectory_id)
+    if simulator:
+        return simulator
+    
+    # Load trajectory from storage
+    storage = get_trajectory_storage()
+    
+    # Try to find the trajectory in any environment
+    trajectory_dict = None
+    for env_name in list_environments():
+        trajectory_dict = storage.get(trajectory_id, env_name)
+        if trajectory_dict:
+            break
+    
+    if not trajectory_dict:
+        raise HTTPException(status_code=404, detail="Trajectory not found")
+    
+    # Convert to TrajectoryData
+    messages_data = trajectory_dict.get('messages', [])
+    trajectory_messages = []
+    for msg in messages_data:
+        trajectory_messages.append(TrajectoryMessage(
+            id=msg.get('id', ''),
+            role=msg.get('role', 'user'),
+            content=msg.get('content'),
+            reasoning=msg.get('reasoning'),
+            timestamp=msg.get('timestamp'),
+            tool_name=msg.get('tool_name'),
+            tool_arguments=msg.get('tool_arguments'),
+        ))
+    
+    trajectory = TrajectoryData(
+        id=trajectory_dict.get('id'),
+        session_id=trajectory_dict.get('session_id', trajectory_id),
+        created_at=trajectory_dict.get('created_at'),
+        env_name=trajectory_dict.get('env_name'),
+        task_index=trajectory_dict.get('task_index'),
+        task_split=trajectory_dict.get('task_split', 'test'),
+        task_instruction=trajectory_dict.get('task_instruction'),
+        user_id=trajectory_dict.get('user_id'),
+        user_model=trajectory_dict.get('user_model', 'gpt-4o'),
+        user_provider=trajectory_dict.get('user_provider', 'openai'),
+        agent_model=trajectory_dict.get('agent_model'),
+        agent_provider=trajectory_dict.get('agent_provider'),
+        persona=trajectory_dict.get('persona', ''),
+        wiki=trajectory_dict.get('wiki', ''),
+        persona_data=trajectory_dict.get('persona_data'),
+        messages=trajectory_messages,
+        is_done=trajectory_dict.get('is_done', False),
+        reward=trajectory_dict.get('reward'),
+        reward_info=trajectory_dict.get('reward_info'),
+        expected_actions=trajectory_dict.get('expected_actions'),
+    )
+    
+    # Create simulator from trajectory
+    simulator = session_manager.create_from_trajectory(trajectory)
+    
+    return simulator
 
 
 @asynccontextmanager
@@ -252,6 +386,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# Global exception handler to log 500 errors server-side
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Log all unhandled exceptions server-side before returning 500."""
+    print(f"\n❌ UNHANDLED EXCEPTION on {request.method} {request.url.path}")
+    print(f"   Error: {exc}")
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)}
+    )
+
 # Static files directory
 STATIC_DIR = Path(__file__).parent / "static"
 REACT_DIST_DIR = STATIC_DIR / "react-app" / "dist"
@@ -278,6 +425,10 @@ async def root():
     react_index = REACT_DIST_DIR / "index.html"
     if react_index.exists():
         return FileResponse(str(react_index))
+    # Try assets folder (alternate build location)
+    assets_index = STATIC_DIR / "assets" / "index.html"
+    if assets_index.exists():
+        return FileResponse(str(assets_index))
     # Fallback to legacy static index
     index_path = STATIC_DIR / "index.html"
     if index_path.exists():
@@ -333,15 +484,13 @@ async def get_environment_tasks(env_name: str, split: str = "test"):
 async def get_environment_wiki(env_name: str):
     """Get policy content for an environment (HTML if available, otherwise Markdown).
     
-    Looks for files in the sigma/envs/{env_name}/ folder only:
+    Looks for files in the data/envs/{env_name}/ folder:
     1. policy.html (preferred for rich formatting)
     2. policy.md (standard format)
     """
     try:
-        import os
-        
-        # Only look within sigma/envs folder
-        env_path = os.path.join(os.path.dirname(__file__), "envs", env_name)
+        # Look within data/envs folder
+        env_path = os.path.join(DATA_ENVS_PATH, env_name)
         
         if not os.path.exists(env_path):
             raise HTTPException(status_code=404, detail=f"Environment '{env_name}' not found")
@@ -369,6 +518,115 @@ async def get_environment_wiki(env_name: str):
             "content": None,
             "content_type": None
         }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Routes - Environment File Management
+# =============================================================================
+
+# Define which files are editable and their descriptions
+EDITABLE_ENV_FILES = {
+    "db.json": {
+        "type": "json",
+        "description": "Database containing users, products, and orders data"
+    },
+    "tasks.json": {
+        "type": "json",
+        "description": "Tasks with user scenarios and evaluation criteria"
+    },
+    "policy.md": {
+        "type": "markdown",
+        "description": "Agent policy and behavioral rules"
+    },
+    "user_guidelines.md": {
+        "type": "markdown",
+        "description": "User simulation guidelines"
+    },
+    "agent_guidelines.md": {
+        "type": "markdown",
+        "description": "Agent-specific guidelines"
+    },
+}
+
+
+@app.get("/environments/{env_name}/files", response_model=EnvironmentFilesResponse)
+async def get_environment_files(env_name: str):
+    """Get list of editable files in an environment."""
+    env_path = os.path.join(DATA_ENVS_PATH, env_name)
+    
+    if not os.path.exists(env_path):
+        raise HTTPException(status_code=404, detail=f"Environment '{env_name}' not found")
+    
+    files = []
+    for filename, info in EDITABLE_ENV_FILES.items():
+        file_path = os.path.join(env_path, filename)
+        if os.path.exists(file_path):
+            size = os.path.getsize(file_path)
+            files.append(EnvironmentFileInfo(
+                name=filename,
+                type=info["type"],
+                size=size,
+                description=info["description"]
+            ))
+    
+    return EnvironmentFilesResponse(env_name=env_name, files=files)
+
+
+@app.get("/environments/{env_name}/files/{filename}", response_model=EnvironmentFileContentResponse)
+async def get_environment_file(env_name: str, filename: str):
+    """Get content of a specific environment file."""
+    if filename not in EDITABLE_ENV_FILES:
+        raise HTTPException(status_code=400, detail=f"File '{filename}' is not editable")
+    
+    env_path = os.path.join(DATA_ENVS_PATH, env_name)
+    file_path = os.path.join(env_path, filename)
+    
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail=f"File '{filename}' not found in environment '{env_name}'")
+    
+    try:
+        with open(file_path, "r") as f:
+            content = f.read()
+        
+        return EnvironmentFileContentResponse(
+            env_name=env_name,
+            filename=filename,
+            content=content,
+            type=EDITABLE_ENV_FILES[filename]["type"]
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/environments/{env_name}/files/{filename}")
+async def update_environment_file(env_name: str, filename: str, request: UpdateEnvironmentFileRequest):
+    """Update content of an environment file."""
+    if filename not in EDITABLE_ENV_FILES:
+        raise HTTPException(status_code=400, detail=f"File '{filename}' is not editable")
+    
+    env_path = os.path.join(DATA_ENVS_PATH, env_name)
+    file_path = os.path.join(env_path, filename)
+    
+    if not os.path.exists(env_path):
+        raise HTTPException(status_code=404, detail=f"Environment '{env_name}' not found")
+    
+    try:
+        # Validate JSON files
+        if EDITABLE_ENV_FILES[filename]["type"] == "json":
+            try:
+                json.loads(request.content)
+            except json.JSONDecodeError as e:
+                raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
+        
+        # Write the file
+        with open(file_path, "w") as f:
+            f.write(request.content)
+        
+        return {"success": True, "message": f"File '{filename}' updated successfully"}
     except HTTPException:
         raise
     except Exception as e:
@@ -713,6 +971,11 @@ async def save_trajectory(session_id: str, request: SaveTrajectoryRequest):
     - Azure Blob Storage (recommended for analytics) - set AZURE_STORAGE_CONNECTION_STRING
     - Local filesystem (default fallback)
     """
+    # Debug: Log incoming request
+    print(f"[save_trajectory] Session: {session_id}, Messages received: {len(request.messages)}")
+    for i, m in enumerate(request.messages):
+        print(f"[save_trajectory] Message {i}: role={m.role}, tool_name={m.tool_name}, has_content={bool(m.content)}")
+    
     simulator = session_manager.get_session(session_id)
     if not simulator:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -721,7 +984,6 @@ async def save_trajectory(session_id: str, request: SaveTrajectoryRequest):
         storage = get_trajectory_storage()
         
         # Build trajectory messages from request
-        from sigma.trajectory_storage import RejectedSuggestion
         messages = []
         for m in request.messages:
             rejected_data = None
@@ -754,9 +1016,25 @@ async def save_trajectory(session_id: str, request: SaveTrajectoryRequest):
         if not user_id and simulator.generated_scenario:
             user_id = getattr(simulator.generated_scenario, 'user_id', None)
         
+        # Get persona_data for session resumption
+        # This includes user profile, orders/reservations, and augmented_data
+        persona_data = simulator.persona_data if hasattr(simulator, 'persona_data') else None
+        
+        # If updating existing trajectory, preserve original session_id and created_at
+        original_session_id = session_id
+        original_created_at = None
+        if request.trajectory_id:
+            existing = storage.get(request.trajectory_id, simulator.env_name)
+            if existing:
+                original_session_id = existing.get('session_id', session_id)
+                original_created_at = existing.get('created_at')
+        
         # Build trajectory data
+        # If trajectory_id is provided (e.g., for continued sessions), use it to update existing
         trajectory = TrajectoryData(
-            session_id=session_id,
+            id=request.trajectory_id,  # Use provided ID or None (will generate new)
+            session_id=original_session_id,  # Preserve original session_id when updating
+            created_at=original_created_at,  # Preserve original created_at when updating
             env_name=simulator.env_name,
             task_index=simulator.task_index,
             task_split=simulator.task_split,
@@ -768,6 +1046,7 @@ async def save_trajectory(session_id: str, request: SaveTrajectoryRequest):
             agent_provider=simulator.agent_provider,
             persona=simulator.current_persona or "",
             wiki=simulator.wiki or "",
+            persona_data=persona_data,  # Full persona data for session resumption
             messages=messages,
             is_done=request.is_done if request.is_done is not None else simulator.state.is_done,
             reward=request.reward if request.reward is not None else simulator.state.last_reward,
@@ -775,8 +1054,10 @@ async def save_trajectory(session_id: str, request: SaveTrajectoryRequest):
             expected_actions=simulator.state.expected_actions,
         )
         
-        # Save to storage
+        # Save to storage (will update existing if trajectory.id is set)
         trajectory_id = storage.save(trajectory)
+        
+        print(f"[save_trajectory] Saved trajectory: {trajectory_id} (requested_id: {request.trajectory_id})")
         
         return SaveTrajectoryResponse(
             success=True,
@@ -802,6 +1083,152 @@ async def list_trajectories(env_name: Optional[str] = None, limit: int = 100):
             "backend": storage.backend_type
         }
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# New Request/Response Models for Trajectory-centric API
+# =============================================================================
+
+class CreateTrajectoryRequest(BaseModel):
+    """Request to create a new trajectory."""
+    env_name: str = "retail"
+    user_model: str = "gpt-4o"
+    user_provider: str = "openai"
+    agent_model: Optional[str] = None
+    agent_provider: Optional[str] = None
+    persona: Optional[str] = None
+    task_index: Optional[int] = None
+    task_split: str = "test"
+    generate_scenario: bool = True  # Default to generating scenario
+    task_ids: Optional[List[int]] = None
+
+
+class CreateTrajectoryResponse(BaseModel):
+    """Response when creating a new trajectory."""
+    trajectory_id: str
+    env_name: str
+    initial_message: str
+    persona: str
+    tools: List[Dict[str, Any]]
+    wiki: str
+    generated_scenario: Optional[Dict[str, Any]] = None
+
+
+@app.post("/trajectories", response_model=CreateTrajectoryResponse)
+async def create_trajectory(request: CreateTrajectoryRequest):
+    """
+    Create a new trajectory with scenario generation.
+    
+    This is the main entry point for starting a new simulation:
+    1. Creates a simulator with optional scenario generation
+    2. Starts the simulation to get the initial user message
+    3. Saves the initial state as a trajectory
+    4. Returns the trajectory_id for subsequent operations
+    
+    All subsequent operations use the trajectory_id:
+    - POST /trajectories/{id}/respond - Send agent response
+    - POST /trajectories/{id}/tool - Execute tool call
+    - PUT /trajectories/{id} - Save/update trajectory
+    """
+    try:
+        # Create simulator
+        simulator = session_manager.create_session(
+            env_name=request.env_name,
+            user_model=request.user_model,
+            user_provider=request.user_provider,
+            agent_model=request.agent_model,
+            agent_provider=request.agent_provider,
+            persona=request.persona,
+            task_index=request.task_index,
+            task_split=request.task_split,
+            generate_scenario=request.generate_scenario,
+            task_ids=request.task_ids,
+        )
+        
+        # Start simulation to get initial message
+        initial_message = simulator.start()
+        
+        # Convert tools to dict format
+        tools = [
+            {
+                "name": t.name,
+                "description": t.description,
+                "parameters": t.parameters,
+                "required_params": t.required_params,
+            }
+            for t in simulator.tools
+        ]
+        
+        # Get generated scenario info if available
+        generated_scenario = None
+        if simulator.generated_scenario:
+            generated_scenario = {
+                "instruction": simulator.generated_scenario.instruction,
+                "user_id": simulator.generated_scenario.user_id,
+                "initial_message": initial_message,  # Use the initial_message from simulator.start()
+                "expected_actions": simulator.state.expected_actions or [],  # Use expected_actions from state
+            }
+        
+        # Save initial trajectory
+        storage = get_trajectory_storage()
+        
+        # Get task instruction
+        task_instruction = None
+        user_id = None
+        if hasattr(simulator, 'env') and hasattr(simulator.env, 'task'):
+            task_instruction = getattr(simulator.env.task, 'instruction', None)
+            user_id = getattr(simulator.env.task, 'user_id', None)
+        if not user_id and simulator.generated_scenario:
+            user_id = getattr(simulator.generated_scenario, 'user_id', None)
+        
+        # Create initial message for trajectory
+        initial_messages = [
+            TrajectoryMessage(
+                id=str(hash(initial_message)),
+                role="user",
+                content=initial_message,
+                timestamp=None,
+            )
+        ]
+        
+        trajectory = TrajectoryData(
+            id=simulator.session_id,  # Use session_id as trajectory_id
+            session_id=simulator.session_id,
+            env_name=simulator.env_name,
+            task_index=simulator.task_index,
+            task_split=simulator.task_split,
+            task_instruction=task_instruction,
+            user_id=user_id,
+            user_model=simulator.user_model,
+            user_provider=simulator.user_provider,
+            agent_model=simulator.agent_model,
+            agent_provider=simulator.agent_provider,
+            persona=simulator.current_persona or "",
+            wiki=simulator.wiki or "",
+            persona_data=simulator.persona_data,
+            messages=initial_messages,
+            is_done=False,
+            expected_actions=simulator.state.expected_actions,
+        )
+        
+        trajectory_id = storage.save(trajectory)
+        
+        return CreateTrajectoryResponse(
+            trajectory_id=trajectory_id,
+            env_name=simulator.env_name,
+            initial_message=initial_message,
+            persona=simulator.current_persona or "",
+            tools=tools,
+            wiki=simulator.wiki or "",
+            generated_scenario=generated_scenario,
+        )
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        print(f"\n❌ ERROR in create_trajectory: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -859,6 +1286,362 @@ async def update_trajectory(trajectory_id: str, env_name: str, request: UpdateTr
     except HTTPException:
         raise
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Trajectory Action Endpoints (new trajectory-centric API)
+# =============================================================================
+
+@app.post("/trajectories/{trajectory_id}/respond", response_model=ActionResultResponse)
+async def trajectory_respond(trajectory_id: str, request: RespondRequest):
+    """
+    Send an agent response in the trajectory simulation.
+    
+    This loads the trajectory, sends the response, and the frontend should
+    save the updated messages via PUT /trajectories/{id}.
+    """
+    try:
+        simulator = get_simulator_for_trajectory(trajectory_id)
+        result = simulator.send_response(request.message)
+        
+        return ActionResultResponse(
+            success=True,
+            observation=result.observation,
+            done=result.done,
+            reward=result.reward,
+            reward_info=result.info,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        return ActionResultResponse(
+            success=False,
+            observation="",
+            done=False,
+            error=str(e),
+        )
+
+
+@app.post("/trajectories/{trajectory_id}/tool", response_model=ActionResultResponse)
+async def trajectory_tool_call(trajectory_id: str, request: ToolCallRequest):
+    """
+    Execute a tool call in the trajectory simulation.
+    """
+    try:
+        simulator = get_simulator_for_trajectory(trajectory_id)
+        result = simulator.call_tool(request.tool_name, request.arguments)
+        
+        return ActionResultResponse(
+            success=True,
+            observation=result.observation,
+            done=result.done,
+            reward=result.reward,
+            reward_info=result.info,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        return ActionResultResponse(
+            success=False,
+            observation="",
+            done=False,
+            error=str(e),
+        )
+
+
+@app.post("/trajectories/{trajectory_id}/parse-action")
+async def trajectory_parse_action(trajectory_id: str, request: ParseActionRequest):
+    """
+    Parse natural language input into a structured action.
+    """
+    try:
+        simulator = get_simulator_for_trajectory(trajectory_id)
+        action = simulator.parse_action(request.user_input)
+        
+        return {
+            "action_type": action.action_type.value if hasattr(action.action_type, 'value') else action.action_type,
+            "content": action.content,
+            "tool_name": action.tool_name,
+            "arguments": action.arguments,
+            "reasoning": action.reasoning,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/trajectories/{trajectory_id}/rollback")
+async def trajectory_rollback(trajectory_id: str, request: RollbackRequest):
+    """
+    Rollback trajectory to a specific point.
+    """
+    try:
+        simulator = get_simulator_for_trajectory(trajectory_id)
+        removed_count = simulator.rollback(request.target_index)
+        
+        # Re-enable simulation if it was done
+        if simulator.state.is_done:
+            simulator.state.is_done = False
+            simulator.state.last_reward = None
+            simulator.state.reward_info = None
+        
+        return {
+            "success": True,
+            "removed_count": removed_count,
+            "new_length": len(simulator.state.conversation_history),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/trajectories/{trajectory_id}/regenerate-user")
+async def trajectory_regenerate_user(trajectory_id: str, request: RegenerateUserRequest):
+    """
+    Regenerate the last user response with optional additional guidance.
+    """
+    try:
+        simulator = get_simulator_for_trajectory(trajectory_id)
+        new_response = simulator.regenerate_user_response(request.additional_note)
+        
+        return {
+            "success": True,
+            "observation": new_response,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/trajectories/{trajectory_id}/tools")
+async def trajectory_get_tools(trajectory_id: str):
+    """Get available tools for a trajectory."""
+    try:
+        simulator = get_simulator_for_trajectory(trajectory_id)
+        tools = [
+            {
+                "name": t.name,
+                "description": t.description,
+                "parameters": t.parameters,
+                "required_params": t.required_params,
+            }
+            for t in simulator.tools
+        ]
+        return {"tools": tools}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/trajectories/{trajectory_id}/wiki")
+async def trajectory_get_wiki(trajectory_id: str):
+    """Get wiki content for a trajectory."""
+    try:
+        simulator = get_simulator_for_trajectory(trajectory_id)
+        return {"wiki": simulator.wiki or ""}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/trajectories/{trajectory_id}/messages")
+async def trajectory_save_messages(trajectory_id: str, request: SaveTrajectoryRequest):
+    """
+    Save/update trajectory messages.
+    
+    This is the new way to save trajectory state - just update the messages.
+    The trajectory_id in the URL is used; request.trajectory_id is ignored.
+    """
+    try:
+        simulator = get_simulator_for_trajectory(trajectory_id)
+        storage = get_trajectory_storage()
+        
+        # Load existing trajectory to preserve metadata
+        existing = storage.get(trajectory_id, simulator.env_name)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Trajectory not found")
+        
+        # Build messages from request
+        messages = []
+        for m in request.messages:
+            rejected_data = None
+            if m.rejected:
+                rejected_data = RejectedSuggestion(
+                    content=m.rejected.get('content'),
+                    reasoning=m.rejected.get('reasoning'),
+                    tool_name=m.rejected.get('tool_name'),
+                    tool_arguments=m.rejected.get('tool_arguments'),
+                )
+            messages.append(TrajectoryMessage(
+                id=str(m.id),
+                role=m.role,
+                content=m.content,
+                reasoning=m.reasoning,
+                timestamp=m.timestamp,
+                tool_name=m.tool_name,
+                tool_arguments=m.tool_arguments,
+                rejected=rejected_data,
+            ))
+        
+        # Build updated trajectory
+        trajectory = TrajectoryData(
+            id=trajectory_id,
+            session_id=existing.get('session_id', trajectory_id),
+            created_at=existing.get('created_at'),
+            env_name=simulator.env_name,
+            task_index=simulator.task_index,
+            task_split=simulator.task_split,
+            task_instruction=existing.get('task_instruction'),
+            user_id=existing.get('user_id'),
+            user_model=simulator.user_model,
+            user_provider=simulator.user_provider,
+            agent_model=simulator.agent_model,
+            agent_provider=simulator.agent_provider,
+            persona=simulator.current_persona or "",
+            wiki=simulator.wiki or "",
+            persona_data=existing.get('persona_data'),
+            messages=messages,
+            is_done=request.is_done if request.is_done is not None else simulator.state.is_done,
+            reward=request.reward if request.reward is not None else simulator.state.last_reward,
+            reward_info=request.reward_info or simulator.state.reward_info,
+            expected_actions=simulator.state.expected_actions,
+        )
+        
+        # Save
+        saved_id = storage.save(trajectory)
+        
+        return SaveTrajectoryResponse(
+            success=True,
+            trajectory_id=saved_id,
+            backend=storage.backend_type,
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        return SaveTrajectoryResponse(
+            success=False,
+            error=str(e),
+        )
+
+
+@app.post("/trajectories/{trajectory_id}/continue", response_model=ContinueTrajectoryResponse)
+async def continue_trajectory(trajectory_id: str, request: ContinueTrajectoryRequest):
+    """
+    Continue a simulation from an existing trajectory.
+    
+    This creates a new session initialized with the conversation state from
+    the specified trajectory, allowing the user to continue from where they left off.
+    
+    Uses SimulatorCore.from_trajectory() for clean, decoupled session restoration.
+    The trajectory's persona_data (including augmented_data) is properly restored
+    so that all tools work correctly with the injected data.
+    
+    The trajectory's messages will be returned so the frontend can restore the UI state.
+    A new session is created with the same environment configuration.
+    """
+    try:
+        storage = get_trajectory_storage()
+        trajectory_dict = storage.get(trajectory_id, request.env_name)
+        
+        if not trajectory_dict:
+            raise HTTPException(status_code=404, detail="Trajectory not found")
+        
+        # Convert dict to TrajectoryData for type safety
+        # Handle messages conversion
+        messages_data = trajectory_dict.get('messages', [])
+        trajectory_messages = []
+        for msg in messages_data:
+            trajectory_messages.append(TrajectoryMessage(
+                id=msg.get('id', ''),
+                role=msg.get('role', 'user'),
+                content=msg.get('content'),
+                reasoning=msg.get('reasoning'),
+                timestamp=msg.get('timestamp'),
+                tool_name=msg.get('tool_name'),
+                tool_arguments=msg.get('tool_arguments'),
+            ))
+        
+        trajectory = TrajectoryData(
+            id=trajectory_dict.get('id'),
+            session_id=trajectory_dict.get('session_id', trajectory_id),
+            created_at=trajectory_dict.get('created_at'),
+            env_name=trajectory_dict.get('env_name', request.env_name),
+            task_index=trajectory_dict.get('task_index'),
+            task_split=trajectory_dict.get('task_split', 'test'),
+            task_instruction=trajectory_dict.get('task_instruction'),
+            user_id=trajectory_dict.get('user_id'),
+            user_model=trajectory_dict.get('user_model', request.user_model),
+            user_provider=trajectory_dict.get('user_provider', request.user_provider),
+            agent_model=trajectory_dict.get('agent_model'),
+            agent_provider=trajectory_dict.get('agent_provider'),
+            persona=trajectory_dict.get('persona', ''),
+            wiki=trajectory_dict.get('wiki', ''),
+            persona_data=trajectory_dict.get('persona_data'),  # Full persona data for restoration
+            messages=trajectory_messages,
+            is_done=trajectory_dict.get('is_done', False),
+            reward=trajectory_dict.get('reward'),
+            reward_info=trajectory_dict.get('reward_info'),
+            expected_actions=trajectory_dict.get('expected_actions'),
+        )
+        
+        # Use the clean from_trajectory approach
+        # This properly handles persona_data injection including augmented_data
+        simulator = session_manager.create_from_trajectory(
+            trajectory=trajectory,
+            user_model=request.user_model,
+            user_provider=request.user_provider,
+            agent_model=request.agent_model,
+            agent_provider=request.agent_provider,
+        )
+        
+        # Start the session (generates initial user message for fresh sessions,
+        # but for restored sessions we already have the conversation)
+        # Only start if conversation is empty (fresh session)
+        if not simulator.state.conversation_history:
+            simulator.start()
+        
+        # Convert tools to dict format
+        tools = [
+            {
+                "name": t.name,
+                "description": t.description,
+                "parameters": t.parameters,
+                "required_params": t.required_params,
+            }
+            for t in simulator.tools
+        ]
+        
+        # Get the first user message for initial_message
+        initial_message = ''
+        for msg in messages_data:
+            if msg.get('role') == 'user':
+                initial_message = msg.get('content', '')
+                break
+        
+        return ContinueTrajectoryResponse(
+            session_id=simulator.session_id,
+            trajectory_id=trajectory_id,
+            env_name=trajectory.env_name,
+            initial_message=initial_message,
+            persona=trajectory.persona,
+            tools=tools,
+            wiki=trajectory.wiki,
+            messages=messages_data,
+            is_done=trajectory.is_done,
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1199,17 +1982,34 @@ def _convert_message_for_dpo(msg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 def _convert_to_grpo_format(trajectories: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Convert trajectories to GRPO training format.
+    Convert trajectories to GRPO training format matching tasks.json structure.
     
-    GRPO (Group Relative Policy Optimization) format matches tau_bench tasks.py:
-    - id: task identifier
-    - user_id: the user involved in the task
-    - instruction: user persona and task instruction
-    - actions: sequence of tool calls (ground truth)
-    - outputs: expected output values (optional)
+    The exported format matches the tasks.json schema so it can be used directly
+    as new tasks for training or evaluation:
     
-    This extracts the sequence of tool calls made during the trajectory
-    to serve as ground truth for verifiable rewards.
+    {
+        "id": "string",
+        "description": { "purpose": null, "relevant_policies": null, "notes": null },
+        "user_scenario": {
+            "persona": null,
+            "instructions": {
+                "task_instructions": "...",
+                "domain": "retail",
+                "reason_for_call": "...",
+                "known_info": "...",
+                "unknown_info": "..."
+            }
+        },
+        "initial_state": null,
+        "evaluation_criteria": {
+            "actions": [...],  # Ground truth: actual tool calls from trajectory
+            "communicate_info": [...],
+            "nl_assertions": null
+        }
+    }
+    
+    The 'actions' in evaluation_criteria is the ground truth sequence of tool calls
+    that actually happened during the trajectory.
     """
     grpo_records = []
     
@@ -1220,11 +2020,14 @@ def _convert_to_grpo_format(trajectories: List[Dict[str, Any]]) -> List[Dict[str
         task_instruction = trajectory.get('task_instruction', '')
         user_id = trajectory.get('user_id', '')
         env_name = trajectory.get('env_name', '')
-        session_id = trajectory.get('session_id', '')
+        session_id = trajectory.get('session_id', trajectory.get('id', ''))
         reward = trajectory.get('reward', 0)
+        persona = trajectory.get('persona', '')
+        persona_data = trajectory.get('persona_data', {})
         
-        # Extract tool call sequence from the actual trajectory
+        # Extract tool call sequence from the actual trajectory (ground truth)
         actions = []
+        action_counter = 0
         for msg in messages:
             if msg.get('role') == 'tool':
                 tool_name = msg.get('tool_name')
@@ -1250,12 +2053,15 @@ def _convert_to_grpo_format(trajectories: List[Dict[str, Any]]) -> List[Dict[str
                             pass
                 
                 if tool_name:
-                    # Format action like tasks.py
+                    # Format action matching tasks.json structure
                     action = {
+                        "action_id": f"{len(grpo_records)}_{action_counter}",
                         "name": tool_name,
-                        "arguments": tool_args if tool_args else {}
+                        "arguments": tool_args if tool_args else {},
+                        "info": None
                     }
                     actions.append(action)
+                    action_counter += 1
         
         print(f"[GRPO] Trajectory {idx} ({session_id[:8] if session_id else 'N/A'}...): reward={reward}, {len(actions)} tool calls")
         
@@ -1264,23 +2070,59 @@ def _convert_to_grpo_format(trajectories: List[Dict[str, Any]]) -> List[Dict[str
             print(f"[GRPO] Skipping trajectory {idx} - no actions ground truth (no function calls)")
             continue
         
-        # Create GRPO record
-        grpo_record = {
-            "id": len(grpo_records),  # Use sequential id based on actual records created
-            "user_id": user_id or f"user_{session_id[:8] if session_id else 'unknown'}",
-            "instruction": task_instruction or f"Task from session {session_id}",
-            "actions": actions,
-        }
+        # Extract user info from persona_data if available
+        user_info = persona_data.get('user', {}) if persona_data else {}
+        user_name = user_info.get('name', {})
+        first_name = user_name.get('first_name', '')
+        last_name = user_name.get('last_name', '')
+        user_address = user_info.get('address', {})
+        zip_code = user_address.get('zip', '')
+        email = user_info.get('email', '')
         
-        # Add expected_actions if available (from original task)
-        expected_actions = trajectory.get('expected_actions')
-        if expected_actions:
-            grpo_record["expected_actions"] = expected_actions
+        # Build known_info string
+        known_info_parts = []
+        if first_name and last_name:
+            known_info_parts.append(f"You are {first_name} {last_name}")
+            if zip_code:
+                known_info_parts.append(f"in zip code {zip_code}")
+        known_info = " ".join(known_info_parts) + "." if known_info_parts else ""
         
-        # Add reward info if available
-        reward_info = trajectory.get('reward_info')
+        # Build unknown_info (email is commonly "forgotten")
+        unknown_info = "You do not remember your email address." if email else ""
+        
+        # Extract communicate_info from reward_info if available
+        communicate_info = []
+        reward_info = trajectory.get('reward_info', {})
         if reward_info and 'outputs' in reward_info:
-            grpo_record["outputs"] = list(reward_info['outputs'].keys())
+            outputs = reward_info.get('outputs', {})
+            communicate_info = list(outputs.keys()) if isinstance(outputs, dict) else []
+        
+        # Create GRPO record matching tasks.json format
+        record_id = str(len(grpo_records))
+        grpo_record = {
+            "id": record_id,
+            "description": {
+                "purpose": f"Generated from trajectory {session_id[:8] if session_id else 'unknown'}",
+                "relevant_policies": None,
+                "notes": f"Reward: {reward}" if reward is not None else None
+            },
+            "user_scenario": {
+                "persona": None,
+                "instructions": {
+                    "task_instructions": persona or ".",
+                    "domain": env_name or "retail",
+                    "reason_for_call": task_instruction or "",
+                    "known_info": known_info,
+                    "unknown_info": unknown_info
+                }
+            },
+            "initial_state": None,
+            "evaluation_criteria": {
+                "actions": actions,  # Ground truth: actual tool calls from trajectory
+                "communicate_info": communicate_info,
+                "nl_assertions": None
+            }
+        }
         
         grpo_records.append(grpo_record)
     
@@ -1642,6 +2484,34 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             "message": str(e),
         })
         ws_manager.disconnect(session_id)
+
+
+# =============================================================================
+# SPA Catch-All Route (must be last to not interfere with API routes)
+# =============================================================================
+
+@app.get("/trajectories/{trajectory_id}/simulation")
+async def trajectory_simulation_page(trajectory_id: str):
+    """Serve the SPA for trajectory simulation pages."""
+    react_index = REACT_DIST_DIR / "index.html"
+    if react_index.exists():
+        return FileResponse(str(react_index))
+    index_path = STATIC_DIR / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
+    return HTMLResponse(content="<h1>Page not available</h1>")
+
+
+@app.get("/trajectory")
+async def trajectory_page():
+    """Serve the SPA for trajectory list page."""
+    react_index = REACT_DIST_DIR / "index.html"
+    if react_index.exists():
+        return FileResponse(str(react_index))
+    index_path = STATIC_DIR / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
+    return HTMLResponse(content="<h1>Page not available</h1>")
 
 
 # =============================================================================

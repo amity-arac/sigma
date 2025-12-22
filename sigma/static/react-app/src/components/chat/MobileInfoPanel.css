@@ -1,0 +1,567 @@
+/* Mobile Info Toggle Button - positioned at top right */
+.mobile-info-toggle {
+  display: none;
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 130;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: none;
+  color: var(--darker);
+  font-size: 1.1rem;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+}
+
+.mobile-info-toggle:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.mobile-info-toggle:active {
+  transform: scale(0.95);
+}
+
+/* Backdrop */
+.mobile-info-backdrop {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 200;
+  animation: fadeIn 0.2s ease;
+}
+
+/* Slide-in Panel */
+.mobile-info-panel {
+  display: none;
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 85%;
+  max-width: 360px;
+  background: var(--bg-secondary);
+  z-index: 250;
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+  flex-direction: column;
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+}
+
+.mobile-info-panel.open {
+  transform: translateX(0);
+}
+
+/* Panel Header */
+.mobile-info-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mobile-info-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--primary);
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.close-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text);
+}
+
+/* Tab Navigation */
+.mobile-info-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  padding: 0 12px;
+}
+
+.tab-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 8px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+  color: var(--text);
+}
+
+.tab-btn.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.tab-icon {
+  font-size: 1.2rem;
+}
+
+.tab-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+/* Tab Content */
+.mobile-info-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.info-section {
+  animation: fadeIn 0.2s ease;
+}
+
+.mobile-info-content .persona-display,
+.mobile-info-content .wiki-content {
+  background: var(--bg-primary);
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 0.9em;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  max-height: none;
+  overflow: visible;
+}
+
+/* Show on mobile only */
+@media (max-width: 1000px) {
+  .mobile-info-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .mobile-info-backdrop {
+    display: block;
+  }
+  
+  .mobile-info-panel {
+    display: flex;
+  }
+}
+
+@media (max-width: 768px) {
+  .mobile-info-toggle {
+    top: 10px;
+    right: 10px;
+    width: 36px;
+    height: 36px;
+    font-size: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .mobile-info-panel {
+    width: 100%;
+    max-width: none;
+  }
+  
+  .mobile-info-toggle {
+    top: 8px;
+    right: 8px;
+    width: 32px;
+    height: 32px;
+    font-size: 0.9rem;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  }
+  
+  .mobile-info-header {
+    padding: 12px 16px;
+  }
+  
+  .mobile-info-header h3 {
+    font-size: 1rem;
+  }
+  
+  .tab-btn {
+    padding: 10px 6px;
+  }
+  
+  .tab-icon {
+    font-size: 1.1rem;
+  }
+  
+  .tab-label {
+    font-size: 0.7rem;
+  }
+  
+  .mobile-info-content {
+    padding: 12px;
+  }
+  
+  .mobile-info-content .persona-display,
+  .mobile-info-content .wiki-content {
+    font-size: 0.85em;
+    padding: 10px;
+  }
+}
+
+/* Mobile Settings Styles */
+.mobile-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.mobile-setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: var(--bg-primary);
+  border-radius: 8px;
+}
+
+.setting-label {
+  font-size: 0.9em;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.setting-hint {
+  font-size: 0.75em;
+  color: var(--muted);
+  margin: -8px 0 0 0;
+  padding-left: 4px;
+}
+
+.save-status {
+  font-size: 0.85em;
+  color: var(--accent-green);
+}
+
+.btn-new-trajectory-mobile {
+  width: 100%;
+  padding: 12px;
+  margin-top: 8px;
+  background: var(--primary);
+  color: var(--darker);
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-new-trajectory-mobile:hover {
+  filter: brightness(1.1);
+}
+
+/* Toggle switch (reuse from ChatHeader) */
+.mobile-settings .toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.mobile-settings .toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.mobile-settings .toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--text-secondary);
+  transition: 0.3s;
+  border-radius: 24px;
+}
+
+.mobile-settings .toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+.mobile-settings .toggle-switch input:checked + .toggle-slider {
+  background-color: var(--accent-green);
+}
+
+.mobile-settings .toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(20px);
+}
+
+/* Wiki Section with slide-up tray */
+.wiki-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: calc(100vh - 180px);
+  position: relative;
+  overflow: hidden;
+}
+
+.wiki-content-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 4px;
+  padding-bottom: 60px; /* Space for collapsed tray */
+}
+
+/* Slide-up Q&A Tray */
+.policy-qa-tray {
+  position: absolute;
+  bottom: 0;
+  left: -16px;
+  right: -16px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  max-height: 70px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.policy-qa-tray.expanded {
+  max-height: 70vh;
+}
+
+/* Collapsed State - Compose Bar */
+.policy-qa-collapsed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 16px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.collapsed-compose-bar {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  gap: 10px;
+  transition: all 0.2s ease;
+}
+
+.policy-qa-collapsed:hover .collapsed-compose-bar {
+  border-color: var(--primary);
+  background: var(--bg-tertiary);
+}
+
+.collapsed-compose-icon {
+  font-size: 1.1em;
+}
+
+.collapsed-compose-placeholder {
+  flex: 1;
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+.collapsed-compose-badge {
+  background: var(--primary);
+  color: var(--darker);
+  font-size: 0.7em;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  min-width: 20px;
+  text-align: center;
+}
+
+/* Tray Handle */
+.policy-qa-tray-handle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 16px;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.tray-handle-bar {
+  width: 40px;
+  height: 4px;
+  background: var(--muted);
+  border-radius: 2px;
+  margin-bottom: 4px;
+}
+
+.tray-handle-label {
+  font-size: 0.75em;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* Q&A Conversation Area */
+.policy-qa-conversation {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.qa-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.qa-empty-state span {
+  font-size: 2em;
+  margin-bottom: 8px;
+}
+
+.qa-empty-state p {
+  font-size: 0.85em;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.qa-exchange {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qa-question, .qa-answer {
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+
+.qa-question {
+  background: var(--bg-tertiary);
+  align-self: flex-end;
+  max-width: 90%;
+}
+
+.qa-answer {
+  background: linear-gradient(135deg, var(--bg-primary) 0%, rgba(var(--primary-rgb), 0.1) 100%);
+  border-left: 3px solid var(--primary);
+  max-width: 95%;
+}
+
+.qa-role {
+  display: block;
+  font-size: 0.7em;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.qa-question p, .qa-answer p {
+  margin: 0;
+  font-size: 0.85em;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.qa-loading {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* Input Row in Tray */
+.policy-qa-tray .policy-qa-input-row {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.policy-qa-input {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--bg-primary);
+  color: var(--text);
+  font-size: 0.85em;
+}
+
+.policy-qa-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.policy-qa-input:disabled {
+  opacity: 0.6;
+}
+
+.policy-qa-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: var(--primary);
+  color: var(--darker);
+  border: none;
+  border-radius: 50%;
+  font-size: 1.1em;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.policy-qa-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: scale(1.05);
+}
+
+.policy-qa-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

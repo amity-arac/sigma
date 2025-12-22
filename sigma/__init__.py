@@ -32,6 +32,13 @@ from sigma.env_registry import (
     get_all_environment_configs,
     create_environment_template,
 )
+from sigma.trajectory import Trajectory, TrajectoryError
+from sigma.trajectory_storage import (
+    TrajectoryData,
+    TrajectoryMessage,
+    RejectedSuggestion,
+    get_trajectory_storage,
+)
 
 __all__ = [
     # CLI
@@ -53,4 +60,11 @@ __all__ = [
     "list_environments",
     "get_all_environment_configs",
     "create_environment_template",
+    # Trajectory
+    "Trajectory",
+    "TrajectoryError",
+    "TrajectoryData",
+    "TrajectoryMessage",
+    "RejectedSuggestion",
+    "get_trajectory_storage",
 ]

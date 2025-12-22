@@ -73,10 +73,25 @@ function ChatHeader({ onNewSession }) {
 
   return (
     <div className="chat-header">
-      <h3>💬 Conversation</h3>
+      <div className="chat-header-left">
+        <h3>💬 <span className="header-title-text">Conversation</span></h3>
+        <span className={`status-badge ${getStatusClass()}`}>
+          {getStatusText()}
+        </span>
+      </div>
       <div className="chat-header-right">
+        {storageChecked && autoSaveStatus && (
+          <span 
+            className={`auto-save-status ${autoSaveStatus.className}`}
+            title={trajectoryId ? `Trajectory ID: ${trajectoryId}` : 'Auto-save is enabled'}
+          >
+            <span className="save-icon">{autoSaveStatus.icon}</span>
+            <span className="save-text">{autoSaveStatus.text}</span>
+          </span>
+        )}
         <div className="autopilot-toggle" title="When enabled, automatically triggers 'Auto' after each user/tool response">
-          <span className="autopilot-label">🚀 Autopilot</span>
+          <span className="autopilot-label">🚀</span>
+          <span className="autopilot-label-text">Autopilot</span>
           <label className="toggle-switch">
             <input
               type="checkbox"
@@ -86,24 +101,14 @@ function ChatHeader({ onNewSession }) {
             <span className="toggle-slider"></span>
           </label>
         </div>
-        {storageChecked && autoSaveStatus && (
-          <span 
-            className={`auto-save-status ${autoSaveStatus.className}`}
-            title={trajectoryId ? `Trajectory ID: ${trajectoryId}` : 'Auto-save is enabled'}
-          >
-            {autoSaveStatus.icon} {autoSaveStatus.text}
-          </span>
-        )}
         <button 
-          className="btn btn-header btn-new-session" 
+          className="btn btn-header btn-new-trajectory" 
           onClick={onNewSession}
-          title="Start a new session"
+          title="Start a new trajectory"
         >
-          ✨ New Session
+          <span className="btn-icon">✨</span>
+          <span className="btn-text">New Trajectory</span>
         </button>
-        <span className={`status-badge ${getStatusClass()}`}>
-          {getStatusText()}
-        </span>
       </div>
     </div>
   )

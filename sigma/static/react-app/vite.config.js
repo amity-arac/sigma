@@ -12,8 +12,16 @@ export default defineConfig({
     }
   },
   build: {
-    // Build into dist folder within react-app
+    // Build into parent static folder
     outDir: 'dist',
-    emptyOutDir: true,
+    emptyOutDir: false,
+    rollupOptions: {
+      output: {
+        // Ensure assets go directly to the assets folder
+        assetFileNames: 'assets/[name]-[hash][extname]',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name]-[hash].js',
+      }
+    }
   }
 })

@@ -2,27 +2,30 @@ import './TrajectoryTable.css'
 
 function TrajectoryTable({ trajectories, onView, onDelete, onMarkComplete, loadingId }) {
   const formatDate = (dateStr) => {
-    if (!dateStr) return 'N/A'
+    if (!dateStr || dateStr === 'null' || dateStr === 'undefined') return 'N/A'
     try {
+      // Handle ISO format strings
+      let normalizedStr = String(dateStr).trim()
+      
       // If the timestamp doesn't have timezone info, assume UTC
-      let normalizedStr = dateStr
-      if (!dateStr.endsWith('Z') && !dateStr.includes('+') && !dateStr.includes('-', 10)) {
-        normalizedStr = dateStr + 'Z'
+      if (normalizedStr.includes('T') && !normalizedStr.endsWith('Z') && !normalizedStr.includes('+') && !/\d{2}:\d{2}:\d{2}-\d{2}/.test(normalizedStr)) {
+        normalizedStr = normalizedStr + 'Z'
       }
+      
       const date = new Date(normalizedStr)
       // Check for Invalid Date
       if (isNaN(date.getTime())) {
+        // Try parsing without timezone assumption
+        const fallbackDate = new Date(dateStr)
+        if (!isNaN(fallbackDate.getTime())) {
+          return fallbackDate.toLocaleString()
+        }
         return dateStr
       }
       return date.toLocaleString()
     } catch {
-      return dateStr
+      return dateStr || 'N/A'
     }
-  }
-
-  const formatReward = (reward) => {
-    if (reward === null || reward === undefined) return '—'
-    return reward.toFixed(2)
   }
 
   if (trajectories.length === 0) {
@@ -44,7 +47,6 @@ function TrajectoryTable({ trajectories, onView, onDelete, onMarkComplete, loadi
             <th>Environment</th>
             <th>Created At</th>
             <th>Status</th>
-            <th>Reward</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -65,11 +67,6 @@ function TrajectoryTable({ trajectories, onView, onDelete, onMarkComplete, loadi
               <td>
                 <span className={`status-badge ${trajectory.is_done ? 'done' : 'incomplete'}`}>
                   {trajectory.is_done ? '✓ Complete' : '○ Incomplete'}
-                </span>
-              </td>
-              <td className="reward-cell">
-                <span className={`reward-value ${trajectory.reward >= 1 ? 'success' : trajectory.reward > 0 ? 'partial' : 'fail'}`}>
-                  {formatReward(trajectory.reward)}
                 </span>
               </td>
               <td className="actions-cell">

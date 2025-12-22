@@ -116,3 +116,150 @@
   margin-top: 4px;
   display: block;
 }
+
+/* Trajectory Mode Toggle */
+.trajectory-mode-row {
+  margin-bottom: 15px;
+}
+
+.trajectory-mode-toggle {
+  display: flex;
+  gap: 0;
+  width: 100%;
+}
+
+.trajectory-mode-toggle .mode-btn {
+  flex: 1;
+  padding: 10px 16px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: all 0.2s;
+}
+
+.trajectory-mode-toggle .mode-btn:first-child {
+  border-radius: 6px 0 0 6px;
+  border-right: none;
+}
+
+.trajectory-mode-toggle .mode-btn:last-child {
+  border-radius: 0 6px 6px 0;
+}
+
+.trajectory-mode-toggle .mode-btn:hover {
+  background: var(--bg-hover);
+}
+
+.trajectory-mode-toggle .mode-btn.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.btn-refresh {
+  padding: 8px 12px !important;
+  min-width: auto !important;
+  flex-shrink: 0;
+}
+
+/* Scenario Source Selection */
+.scenario-source-section {
+  margin-bottom: 15px;
+}
+
+.scenario-source-section .section-label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+}
+
+.scenario-source-toggle {
+  display: flex;
+  gap: 0;
+  width: 100%;
+}
+
+.scenario-source-toggle .source-btn {
+  flex: 1;
+  padding: 12px 16px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: all 0.2s;
+}
+
+.scenario-source-toggle .source-btn:first-child {
+  border-radius: 6px 0 0 6px;
+  border-right: none;
+}
+
+.scenario-source-toggle .source-btn:last-child {
+  border-radius: 0 6px 6px 0;
+}
+
+.scenario-source-toggle .source-btn:hover {
+  background: var(--bg-hover);
+}
+
+.scenario-source-toggle .source-btn.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.scenario-options-box {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 15px;
+}
+
+.scenario-options-box .options-description {
+  font-size: 0.85em;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.scenario-options-box .form-row {
+  margin-bottom: 0;
+}
+
+.scenario-options-box .form-group {
+  margin-bottom: 0;
+}
+
+/* Responsive Setup Panel */
+@media (max-width: 768px) {
+  .setup-panel {
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  
+  .setup-panel h2 {
+    font-size: 1.1em;
+  }
+  
+  .env-description {
+    font-size: 0.8em;
+    padding: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .setup-panel {
+    padding: 12px;
+    border-radius: 8px;
+  }
+  
+  .setup-panel h2 {
+    font-size: 1em;
+  }
+}

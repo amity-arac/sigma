@@ -1,0 +1,12 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run Sigma Web",
+            "type": "node-terminal",
+            "request": "launch",
+            "command": "${workspaceFolder}/run_sigma_web.sh",
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

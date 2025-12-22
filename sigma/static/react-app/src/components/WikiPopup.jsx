@@ -6,7 +6,7 @@ import './WikiPopup.css'
  * Supports both HTML (rendered in iframe) and Markdown content types
  * Shows a "Begin Session" button that lights up when session is ready
  */
-function WikiPopup({ content, contentType, loading, envName, sessionReady, onBeginSession, onClose }) {
+function WikiPopup({ content, contentType, loading, envName, sessionReady, generatedScenario, onBeginSession, onClose }) {
   // Simple markdown to HTML conversion (only for markdown content)
   const renderedMarkdown = useMemo(() => {
     if (!content || contentType !== 'markdown') return null
@@ -99,14 +99,28 @@ function WikiPopup({ content, contentType, loading, envName, sessionReady, onBeg
           {renderContent()}
         </div>
         
+        {/* Show generated scenario inspiration if available */}
+        {generatedScenario && (
+          <div className="wiki-popup-inspiration">
+            <div className="inspiration-header">
+              <span className="inspiration-icon">💡</span>
+              <span className="inspiration-title">Generated Scenario</span>
+            </div>
+            <div className="inspiration-content">
+              <div className="inspiration-label">Inspired by task:</div>
+              <div className="inspiration-text">{generatedScenario.seed_task_instruction}</div>
+            </div>
+          </div>
+        )}
+
         <div className="wiki-popup-footer">
           <div className="wiki-popup-status">
             {sessionReady ? (
-              <span className="status-ready">✓ Session Ready</span>
+              <span className="status-ready">✓ Trajectory Ready</span>
             ) : (
               <span className="status-loading">
                 <span className="mini-spinner"></span>
-                Initializing session...
+                Initializing trajectory...
               </span>
             )}
           </div>
@@ -122,7 +136,7 @@ function WikiPopup({ content, contentType, loading, envName, sessionReady, onBeg
               onClick={onBeginSession}
               disabled={!sessionReady}
             >
-              {sessionReady ? '🚀 Begin Session' : 'Waiting...'}
+              {sessionReady ? '🚀 Begin Trajectory' : 'Waiting...'}
             </button>
           </div>
         </div>

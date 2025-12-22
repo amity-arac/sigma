@@ -3,6 +3,7 @@ import { useSession } from '../context/SessionContext'
 import { useToast } from '../context/ToastContext'
 import ChatPanel from './chat/ChatPanel'
 import SidePanel from './sidebar/SidePanel'
+import MobileInfoPanel from './chat/MobileInfoPanel'
 import ConfirmDialog from './common/ConfirmDialog'
 import './MainContent.css'
 
@@ -20,8 +21,8 @@ function MainContent({ onSimulationEnd, onNewSession }) {
   const handleNewSession = useCallback(() => {
     if (messages.length > 0) {
       setConfirmDialogConfig({
-        title: '✨ Start New Session',
-        message: 'Are you sure you want to start a new session? All current progress will be lost.',
+        title: '✨ Start New Trajectory',
+        message: 'Are you sure you want to start a new trajectory? All current progress will be lost.',
         onConfirm: () => {
           clearMessages()
           resetSession()
@@ -47,6 +48,9 @@ function MainContent({ onSimulationEnd, onNewSession }) {
         />
         <SidePanel />
       </div>
+      
+      {/* Mobile info panel - shows tools, persona, wiki, settings on mobile */}
+      <MobileInfoPanel onNewSession={handleNewSession} />
       
       {showConfirmDialog && (
         <ConfirmDialog

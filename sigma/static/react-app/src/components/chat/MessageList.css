@@ -2,3 +2,59 @@
   display: flex;
   flex-direction: column;
 }
+
+/* Conversation Ended Section */
+.conversation-ended {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 24px;
+  margin: 20px 0;
+  background: linear-gradient(135deg, #f0f9f4 0%, #e8f5e9 100%);
+  border: 1px solid #c8e6c9;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.conversation-ended-message {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  color: #2e7d32;
+  font-weight: 500;
+}
+
+.ended-icon {
+  font-size: 24px;
+}
+
+.ended-text {
+  font-size: 16px;
+}
+
+.btn-new-trajectory {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.btn-new-trajectory:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btn-new-trajectory:active {
+  transform: translateY(0);
+}

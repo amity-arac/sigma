@@ -406,6 +406,26 @@
   border-top: 1px solid var(--border);
   background: var(--darker);
   border-radius: 0 0 16px 16px;
+  gap: 12px;
+}
+
+.simulate-button {
+  background: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  color: var(--darker);
+  padding: 10px 20px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.simulate-button:hover {
+  background: var(--primary-hover, #60a5fa);
+  border-color: var(--primary-hover, #60a5fa);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
 .delete-button {

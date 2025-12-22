@@ -242,10 +242,20 @@ class FindUserIdByNameZip(Tool):
     def invoke(data: Dict[str, Any], first_name: str, last_name: str, zip: str) -> str:
         users = data["users"]
         for user_id, profile in users.items():
+            # Support both nested format (name.first_name) and flat format (first_name)
+            if "name" in profile and isinstance(profile["name"], dict):
+                profile_first = profile["name"].get("first_name", "")
+                profile_last = profile["name"].get("last_name", "")
+            else:
+                profile_first = profile.get("first_name", "")
+                profile_last = profile.get("last_name", "")
+            
+            profile_zip = profile.get("address", {}).get("zip", "")
+            
             if (
-                profile["name"]["first_name"].lower() == first_name.lower()
-                and profile["name"]["last_name"].lower() == last_name.lower()
-                and profile["address"]["zip"] == zip
+                profile_first.lower() == first_name.lower()
+                and profile_last.lower() == last_name.lower()
+                and profile_zip == zip
             ):
                 return user_id
         return "Error: user not found"

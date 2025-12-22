@@ -19,6 +19,8 @@
   justify-content: space-between;
   padding: 8px 0;
   border-bottom: 1px solid var(--border-color);
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .result-item:last-child {
@@ -43,4 +45,33 @@
 
 .results-actions {
   margin-top: 15px;
+}
+
+/* Responsive Results Panel */
+@media (max-width: 768px) {
+  .results-panel {
+    padding: 16px;
+    margin-top: 16px;
+  }
+  
+  .results-panel h3 {
+    font-size: 1.1rem;
+  }
+  
+  .result-item {
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 0;
+  }
+  
+  .result-value {
+    font-size: 0.95rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .results-panel {
+    padding: 12px;
+    border-radius: 8px;
+  }
 }

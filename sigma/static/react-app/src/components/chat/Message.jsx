@@ -7,7 +7,8 @@ const ICONS = {
   agent: '🤖',
   tool: '🔧',
   'tool-result': '📋',
-  reasoning: '💭'
+  reasoning: '💭',
+  rejected: '❌'
 }
 
 const ROLE_NAMES = {
@@ -15,23 +16,32 @@ const ROLE_NAMES = {
   agent: 'Agent (You)',
   tool: 'Tool Call',
   'tool-result': 'Tool Result',
-  reasoning: 'Agent Reasoning'
+  reasoning: 'Agent Reasoning',
+  rejected: 'Rejected'
 }
 
 function Message({ 
   role, 
   content, 
-  reasoning, 
+  reasoning,
+  rejected,
   isTemporary, 
   messageIndex,
+  messageId,
   onRollback,
   onRegenerateUser,
+  onRemoveRejected,
   isSimulationActive
 }) {
   const [showReasoning, setShowReasoning] = useState(false)
+  const [showRejectedDetails, setShowRejectedDetails] = useState(false)
 
   const toggleReasoning = () => {
     setShowReasoning(prev => !prev)
+  }
+
+  const toggleRejectedDetails = () => {
+    setShowRejectedDetails(prev => !prev)
   }
 
   // Determine if this message should show rollback button (only agent response and tool call)
@@ -46,6 +56,13 @@ function Message({
     onRegenerateUser && 
     messageIndex !== undefined
 
+  // Determine if this is a rejected message that can be removed
+  const isRejectedMessage = role === 'rejected'
+  const showRemoveButton = isRejectedMessage && onRemoveRejected && messageId
+
+  // For rejected messages, get the type
+  const rejectedType = rejected?.tool_name ? 'Tool Call' : 'Response'
+
   return (
     <div className={`message ${role} ${isTemporary ? 'temporary' : ''}`}>
       <div className="message-header">
@@ -58,6 +75,15 @@ function Message({
             title={showReasoning ? 'Hide reasoning' : 'Show reasoning'}
           >
             💭 {showReasoning ? 'Hide' : 'Show'} Reasoning
+          </button>
+        )}
+        {isRejectedMessage && rejected && (
+          <button 
+            className={`reasoning-toggle ${showRejectedDetails ? 'active' : ''}`}
+            onClick={toggleRejectedDetails}
+            title={showRejectedDetails ? 'Hide details' : 'Show details'}
+          >
+            📋 {showRejectedDetails ? 'Hide' : 'Show'} Details
           </button>
         )}
         <div className="message-actions">
@@ -79,6 +105,15 @@ function Message({
               ✕
             </button>
           )}
+          {showRemoveButton && (
+            <button 
+              className="message-action-btn remove-btn"
+              onClick={() => onRemoveRejected(messageId)}
+              title="Remove this rejected action from trajectory"
+            >
+              🗑️
+            </button>
+          )}
         </div>
       </div>
       
@@ -88,10 +123,48 @@ function Message({
           <div className="reasoning-content">{reasoning}</div>
         </div>
       )}
+
+      {/* Rejected message details (collapsible) */}
+      {isRejectedMessage && rejected && showRejectedDetails && (
+        <div className="rejected-details-panel">
+          <div className="rejected-type-label">Type: {rejectedType}</div>
+          {rejected.reasoning && (
+            <div className="rejected-detail-section">
+              <div className="rejected-detail-label">💭 Reasoning:</div>
+              <div className="rejected-detail-content reasoning">{rejected.reasoning}</div>
+            </div>
+          )}
+          {rejected.content && (
+            <div className="rejected-detail-section">
+              <div className="rejected-detail-label">📝 Response:</div>
+              <div className="rejected-detail-content">{rejected.content}</div>
+            </div>
+          )}
+          {rejected.tool_name && (
+            <div className="rejected-detail-section">
+              <div className="rejected-detail-label">🔧 Tool:</div>
+              <div className="rejected-detail-content code">{rejected.tool_name}</div>
+            </div>
+          )}
+          {rejected.tool_arguments && (
+            <div className="rejected-detail-section">
+              <div className="rejected-detail-label">Arguments:</div>
+              <div className="rejected-detail-content code">
+                {JSON.stringify(rejected.tool_arguments, null, 2)}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       
       <div className="message-content">
         {role === 'tool-result' ? (
           <ToolResultContent content={content} />
+        ) : isRejectedMessage ? (
+          <span className="rejected-summary">
+            Rejected {rejectedType}
+            {!showRejectedDetails && <span className="hint"> (click "Show Details" to see more)</span>}
+          </span>
         ) : (
           content
         )}

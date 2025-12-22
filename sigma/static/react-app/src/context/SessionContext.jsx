@@ -55,6 +55,18 @@ export function SessionProvider({ children }) {
       rejected_tool_arguments: rejectedToolArguments,
       rejected_reasoning: rejectedReasoning,
     }
+    
+    // Debug: Log when tool messages are added
+    if (role === 'tool') {
+      console.log('[addMessage] Tool message created:', {
+        id: newMessage.id,
+        role: newMessage.role,
+        tool_name: newMessage.tool_name,
+        tool_arguments: newMessage.tool_arguments,
+        optionsReceived: { toolName, toolArguments }
+      })
+    }
+    
     setMessages(prev => [...prev, newMessage])
     
     // Set sticky message for first user message
@@ -120,6 +132,14 @@ export function SessionProvider({ children }) {
     lastSavedMessagesRef.current = null
   }, [])
 
+  // Mark current messages as already saved (used when restoring a trajectory)
+  const markMessagesSaved = useCallback((messagesToMark) => {
+    const nonTempMessages = messagesToMark.filter(m => !m.isTemporary)
+    const messagesKey = JSON.stringify(nonTempMessages.map(m => m.id))
+    lastSavedMessagesRef.current = messagesKey
+    console.log('[markMessagesSaved] Marked', nonTempMessages.length, 'messages as saved')
+  }, [])
+
   // Auto-save effect - debounced save whenever messages change
   useEffect(() => {
     // Don't auto-save if no session or no messages
@@ -148,6 +168,7 @@ export function SessionProvider({ children }) {
     autoSaveTimeoutRef.current = setTimeout(async () => {
       setIsAutoSaving(true)
       try {
+        // Use sessionId which is now the same as trajectoryId
         const result = await saveTrajectory(
           sessionId,
           nonTempMessages,
@@ -200,10 +221,12 @@ export function SessionProvider({ children }) {
     removeLastMessages,
     clearMessages,
     resetSession,
+    markMessagesSaved,
     isAutopilotEnabled,
     setIsAutopilotEnabled,
     // Auto-save state
     trajectoryId,
+    setTrajectoryId,
     isAutoSaving,
     lastSaveTime
   }

@@ -17,25 +17,100 @@ export async function fetchEnvironmentWiki(envName) {
 }
 
 export async function createSession(payload) {
-  const response = await fetch(`${API_BASE}/sessions`, {
+  // Use the new trajectory-centric API
+  const response = await fetch(`${API_BASE}/trajectories`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({
+      env_name: payload.env_name || payload.envName || 'retail',
+      user_model: payload.user_model || payload.userModel || 'gpt-4o',
+      user_provider: payload.user_provider || payload.userProvider || 'openai',
+      agent_model: payload.agent_model || payload.agentModel || null,
+      agent_provider: payload.agent_provider || payload.agentProvider || null,
+      persona: payload.persona || null,
+      task_index: payload.task_index || payload.taskIndex || null,
+      task_split: payload.task_split || payload.taskSplit || 'test',
+      generate_scenario: payload.generate_scenario ?? payload.generateScenario ?? true,
+      task_ids: payload.task_ids || payload.taskIds || null,
+    })
   })
   if (!response.ok) {
     const error = await response.json()
-    throw new Error(error.detail || 'Failed to create session')
+    throw new Error(error.detail || 'Failed to create trajectory')
   }
-  return response.json()
+  const result = await response.json()
+  // Map the response to match the old session API format
+  return {
+    session_id: result.trajectory_id,  // Use trajectory_id as session_id
+    ...result
+  }
 }
 
-export async function startSession(sessionId) {
-  const response = await fetch(`${API_BASE}/sessions/${sessionId}/start`, {
-    method: 'POST'
+// createTrajectory is the same as createSession
+export const createTrajectory = createSession
+
+// startSession is no longer needed - trajectories are started on creation
+// Keep for backward compatibility but return the same data
+export async function startSession(trajectoryId) {
+  // The trajectory is already started when created
+  // Just load and return the trajectory data
+  try {
+    const trajectories = await listTrajectories(null, 500)
+    const traj = (trajectories.trajectories || []).find(t => t.id === trajectoryId)
+    if (!traj) {
+      throw new Error('Trajectory not found')
+    }
+    const fullTrajectory = await getTrajectory(trajectoryId, traj.env_name)
+    
+    // Get first user message
+    let initialMessage = ''
+    for (const msg of (fullTrajectory.messages || [])) {
+      if (msg.role === 'user') {
+        initialMessage = msg.content || ''
+        break
+      }
+    }
+    
+    return {
+      session_id: trajectoryId,
+      initial_message: initialMessage,
+      persona: fullTrajectory.persona || '',
+      tools: [],  // Would need to load from simulator
+      wiki: fullTrajectory.wiki || '',
+      generated_scenario: null,
+    }
+  } catch (e) {
+    // Fallback to old endpoint for truly old sessions
+    const response = await fetch(`${API_BASE}/sessions/${trajectoryId}/start`, {
+      method: 'POST'
+    })
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to start simulation')
+    }
+    return response.json()
+  }
+}
+
+// Alias for consistency
+export const startTrajectory = startSession
+
+export async function continueTrajectory(trajectoryId, envName, options = {}) {
+  const response = await fetch(`${API_BASE}/trajectories/${trajectoryId}/continue`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      trajectory_id: trajectoryId,
+      env_name: envName,
+      user_model: options.userModel || 'gpt-4o',
+      user_provider: options.userProvider || 'openai',
+      agent_model: options.agentModel || null,
+      agent_provider: options.agentProvider || null
+    })
   })
   if (!response.ok) {
     const error = await response.json()
-    throw new Error(error.detail || 'Failed to start simulation')
+    throw new Error(error.detail || 'Failed to continue trajectory')
   }
   return response.json()
 }
@@ -99,11 +174,14 @@ export async function rollbackToPoint(sessionId, targetIndex) {
   return response.json()
 }
 
-export async function regenerateUserResponse(sessionId, additionalNote = null) {
+export async function regenerateUserResponse(sessionId, rejectedMessage = null, feedback = null) {
   const response = await fetch(`${API_BASE}/sessions/${sessionId}/regenerate-user`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ additional_note: additionalNote })
+    body: JSON.stringify({ 
+      rejected_message: rejectedMessage,
+      feedback: feedback 
+    })
   })
   if (!response.ok) {
     throw new Error('Failed to regenerate user response')
@@ -123,6 +201,21 @@ export async function generateResponse(sessionId, prompt) {
   return response.json()
 }
 
+export async function regenerateAction(sessionId, rejectedAction, feedback = null) {
+  const response = await fetch(`${API_BASE}/sessions/${sessionId}/regenerate-action`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 
+      rejected_action: rejectedAction,
+      feedback: feedback 
+    })
+  })
+  if (!response.ok) {
+    throw new Error('Failed to regenerate action')
+  }
+  return response.json()
+}
+
 export async function checkTrajectoryStorageStatus() {
   const response = await fetch(`${API_BASE}/trajectory/status`)
   if (!response.ok) {
@@ -131,22 +224,20 @@ export async function checkTrajectoryStorageStatus() {
   return response.json()
 }
 
-export async function saveTrajectory(sessionId, messages, resultInfo = {}) {
-  const response = await fetch(`${API_BASE}/sessions/${sessionId}/save-trajectory`, {
-    method: 'POST',
+export async function saveTrajectory(trajectoryId, messages, resultInfo = {}) {
+  // Use the new trajectory-centric endpoint: PUT /trajectories/{id}/messages
+  const response = await fetch(`${API_BASE}/trajectories/${trajectoryId}/messages`, {
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      // Messages now include rejected suggestions inline (role='rejected')
       messages: messages.map(m => ({
         id: String(m.id),
         role: m.role,
         content: m.content,
         reasoning: m.reasoning || null,
         timestamp: m.timestamp || null,
-        // For tool calls
         tool_name: m.tool_name || null,
         tool_arguments: m.tool_arguments || null,
-        // For rejected suggestions (role='rejected') - same format as normal message
         rejected: m.rejected || null,
       })),
       is_done: resultInfo.is_done,
@@ -154,10 +245,37 @@ export async function saveTrajectory(sessionId, messages, resultInfo = {}) {
       reward_info: resultInfo.reward_info
     })
   })
+  
   if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.detail || 'Failed to save trajectory')
+    // Fallback to old session endpoint for compatibility
+    const fallbackResponse = await fetch(`${API_BASE}/sessions/${trajectoryId}/save-trajectory`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        trajectory_id: trajectoryId,
+        messages: messages.map(m => ({
+          id: String(m.id),
+          role: m.role,
+          content: m.content,
+          reasoning: m.reasoning || null,
+          timestamp: m.timestamp || null,
+          tool_name: m.tool_name || null,
+          tool_arguments: m.tool_arguments || null,
+          rejected: m.rejected || null,
+        })),
+        is_done: resultInfo.is_done,
+        reward: resultInfo.reward,
+        reward_info: resultInfo.reward_info
+      })
+    })
+    
+    if (!fallbackResponse.ok) {
+      const error = await fallbackResponse.json()
+      throw new Error(error.detail || 'Failed to save trajectory')
+    }
+    return fallbackResponse.json()
   }
+  
   return response.json()
 }
 
@@ -220,6 +338,58 @@ export async function exportTrajectories(format, envName = null, trajectoryIds =
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || 'Failed to export trajectories')
+  }
+  return response.json()
+}
+
+// Get trajectory by ID, searching across all environments
+export async function getTrajectoryByIdAnyEnv(trajectoryId) {
+  // First try to get trajectory list to find the env
+  const response = await fetch(`${API_BASE}/trajectories?limit=500`)
+  if (!response.ok) {
+    throw new Error('Failed to fetch trajectories')
+  }
+  const result = await response.json()
+  
+  // Find the trajectory in the list
+  const trajectory = (result.trajectories || []).find(t => t.id === trajectoryId)
+  if (!trajectory) {
+    throw new Error('Trajectory not found')
+  }
+  
+  // Now get the full trajectory with messages
+  return getTrajectory(trajectoryId, trajectory.env_name)
+}
+
+// =============================================================================
+// Environment Files API
+// =============================================================================
+
+export async function fetchEnvironmentFiles(envName) {
+  const response = await fetch(`${API_BASE}/environments/${envName}/files`)
+  if (!response.ok) {
+    throw new Error('Failed to load environment files')
+  }
+  return response.json()
+}
+
+export async function fetchEnvironmentFile(envName, filename) {
+  const response = await fetch(`${API_BASE}/environments/${envName}/files/${filename}`)
+  if (!response.ok) {
+    throw new Error('Failed to load file content')
+  }
+  return response.json()
+}
+
+export async function updateEnvironmentFile(envName, filename, content) {
+  const response = await fetch(`${API_BASE}/environments/${envName}/files/${filename}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content })
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || 'Failed to save file')
   }
   return response.json()
 }
