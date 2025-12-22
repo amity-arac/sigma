@@ -15,7 +15,7 @@
       "unknown_info": "You do not remember your email address."
     }
   },
-  "initial_state": {
+  "db": {
     "users": {
       "evelyn_taylor_9534": {
         "user_id": "evelyn_taylor_9534",

@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { fetchEnvironmentFiles, fetchEnvironmentFile, updateEnvironmentFile } from '../../services/api';
+import { fetchEnvironments, fetchEnvironmentFiles, fetchEnvironmentFile, updateEnvironmentFile } from '../../services/api';
 import TasksEditor from './TasksEditor';
 import DatabaseEditor from './DatabaseEditor';
 import './EnvironmentsPage.css';
 
 const EnvironmentsPage = () => {
-  const [environments] = useState(['retail']); // For now, hardcoded
-  const [selectedEnv, setSelectedEnv] = useState('retail');
+  const [environments, setEnvironments] = useState([]);
+  const [selectedEnv, setSelectedEnv] = useState('');
   const [files, setFiles] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
   const [fileContent, setFileContent] = useState('');
@@ -16,9 +16,29 @@ const EnvironmentsPage = () => {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
 
+  // Load environments on mount
+  useEffect(() => {
+    const loadEnvironments = async () => {
+      try {
+        const data = await fetchEnvironments();
+        const envNames = data.map(env => env.name);
+        setEnvironments(envNames);
+        if (envNames.length > 0 && !selectedEnv) {
+          setSelectedEnv(envNames[0]);
+        }
+      } catch (err) {
+        setError('Failed to load environments');
+        console.error(err);
+      }
+    };
+    loadEnvironments();
+  }, []);
+
   // Load files when environment changes
   useEffect(() => {
-    loadFiles();
+    if (selectedEnv) {
+      loadFiles();
+    }
   }, [selectedEnv]);
 
   const loadFiles = async () => {
@@ -209,7 +229,7 @@ const EnvironmentsPage = () => {
                   >
                     <span className="file-icon">{getFileIcon(file.name)}</span>
                     <div className="file-info">
-                      <span className="file-name">{file.name}</span>
+                      <span className="file-name">{file.display_name || file.name}</span>
                       <span className="file-size">{formatFileSize(file.size)}</span>
                     </div>
                     {!file.editable && <span className="readonly-badge">Read Only</span>}
@@ -224,7 +244,7 @@ const EnvironmentsPage = () => {
           {selectedFile && (
             <div className="editor-header">
               <h2>
-                {getFileIcon(selectedFile.name)} {selectedFile.name}
+                {getFileIcon(selectedFile.name)} {selectedFile.display_name || selectedFile.name}
                 {hasChanges && <span className="unsaved-indicator">•</span>}
               </h2>
               <span className="file-description">{selectedFile.description}</span>

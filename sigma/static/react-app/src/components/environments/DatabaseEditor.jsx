@@ -1,12 +1,111 @@
 import { useState, useMemo } from 'react'
 import './DatabaseEditor.css'
 
-// Tabs for different data types
-const TABS = [
-  { id: 'users', label: 'Users', icon: '👤' },
-  { id: 'products', label: 'Products', icon: '📦' },
-  { id: 'orders', label: 'Orders', icon: '🛒' },
-]
+// Icon mapping for common data types
+const ICON_MAP = {
+  users: '👤',
+  products: '📦',
+  orders: '🛒',
+  flights: '✈️',
+  reservations: '🎫',
+  customers: '👥',
+  inventory: '📋',
+  transactions: '💳',
+  bookings: '📅',
+  default: '📄'
+}
+
+// Get a display-friendly label from a key
+function formatLabel(key) {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, str => str.toUpperCase())
+    .trim()
+}
+
+// Infer column type from values
+function inferColumnType(values) {
+  const nonNullValues = values.filter(v => v != null && v !== '')
+  if (nonNullValues.length === 0) return 'string'
+  
+  const sample = nonNullValues[0]
+  if (typeof sample === 'boolean') return 'boolean'
+  if (typeof sample === 'number') return 'number'
+  if (Array.isArray(sample)) return 'array'
+  if (typeof sample === 'object') return 'object'
+  
+  // Check if it looks like a date
+  if (typeof sample === 'string' && /^\d{4}-\d{2}-\d{2}/.test(sample)) return 'date'
+  
+  return 'string'
+}
+
+// Auto-discover columns from data
+function discoverColumns(data) {
+  if (!data || data.length === 0) return []
+  
+  // Collect all keys from all records
+  const keySet = new Set()
+  const keyValues = {}
+  
+  data.forEach(record => {
+    Object.keys(record).forEach(key => {
+      keySet.add(key)
+      if (!keyValues[key]) keyValues[key] = []
+      keyValues[key].push(record[key])
+    })
+  })
+  
+  // Create column definitions
+  const columns = []
+  const priorityKeys = ['id', 'user_id', 'product_id', 'order_id', 'flight_number', 'name', 'email', 'status']
+  
+  // Sort keys: priority keys first, then alphabetically
+  const sortedKeys = Array.from(keySet).sort((a, b) => {
+    const aIdx = priorityKeys.indexOf(a)
+    const bIdx = priorityKeys.indexOf(b)
+    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
+    if (aIdx !== -1) return -1
+    if (bIdx !== -1) return 1
+    return a.localeCompare(b)
+  })
+  
+  sortedKeys.forEach(key => {
+    const type = inferColumnType(keyValues[key])
+    const column = {
+      key,
+      label: formatLabel(key),
+      type
+    }
+    
+    // Create appropriate render function based on type
+    if (type === 'array') {
+      column.render = (val) => `[${(val || []).length} items]`
+    } else if (type === 'object') {
+      column.render = (val, row) => {
+        if (!val) return '-'
+        // Special handling for common nested objects
+        if (val.first_name && val.last_name) {
+          return `${val.first_name} ${val.last_name}`
+        }
+        if (val.city) return val.city
+        return '{...}'
+      }
+    } else if (type === 'boolean') {
+      column.render = (val) => val ? '✓' : '✗'
+    } else if (key === 'status') {
+      column.render = (val) => (
+        <span className={`status-badge ${val}`}>{val}</span>
+      )
+    }
+    
+    columns.push(column)
+  })
+  
+  // Limit to reasonable number of columns for table view
+  return columns.slice(0, 8)
+}
 
 function DataTable({ data, columns, onRowClick, selectedId }) {
   const [sortColumn, setSortColumn] = useState(null)
@@ -94,196 +193,192 @@ function DataTable({ data, columns, onRowClick, selectedId }) {
 function RecordDetail({ record, type, onClose, onSave }) {
   const [editedRecord, setEditedRecord] = useState(JSON.parse(JSON.stringify(record)))
   
-  const renderUserFields = () => (
-    <>
-      <div className="form-row">
-        <div className="form-group">
-          <label>User ID</label>
-          <input value={editedRecord.user_id || ''} disabled />
+  // Generic field renderer that handles any schema
+  const renderField = (key, value, path = []) => {
+    const fullPath = [...path, key]
+    const updateField = (newValue) => {
+      setEditedRecord(prev => {
+        const updated = JSON.parse(JSON.stringify(prev))
+        let obj = updated
+        for (let i = 0; i < path.length; i++) {
+          obj = obj[path[i]]
+        }
+        obj[key] = newValue
+        return updated
+      })
+    }
+    
+    // Skip internal id field (used by table)
+    if (key === 'id' && path.length === 0) return null
+    
+    // Handle different value types
+    if (value === null || value === undefined) {
+      return (
+        <div key={fullPath.join('.')} className="form-group">
+          <label>{formatLabel(key)}</label>
+          <input value="" onChange={e => updateField(e.target.value)} placeholder="(empty)" />
         </div>
-        <div className="form-group">
-          <label>Email</label>
-          <input 
-            value={editedRecord.email || ''} 
-            onChange={e => setEditedRecord(r => ({...r, email: e.target.value}))}
-          />
-        </div>
-      </div>
-      <div className="form-row">
-        <div className="form-group">
-          <label>First Name</label>
-          <input 
-            value={editedRecord.name?.first_name || ''} 
-            onChange={e => setEditedRecord(r => ({...r, name: {...r.name, first_name: e.target.value}}))}
-          />
-        </div>
-        <div className="form-group">
-          <label>Last Name</label>
-          <input 
-            value={editedRecord.name?.last_name || ''} 
-            onChange={e => setEditedRecord(r => ({...r, name: {...r.name, last_name: e.target.value}}))}
-          />
-        </div>
-      </div>
-      <div className="form-section-title">Address</div>
-      <div className="form-row">
-        <div className="form-group flex-2">
-          <label>Address 1</label>
-          <input 
-            value={editedRecord.address?.address1 || ''} 
-            onChange={e => setEditedRecord(r => ({...r, address: {...r.address, address1: e.target.value}}))}
-          />
-        </div>
-        <div className="form-group">
-          <label>Address 2</label>
-          <input 
-            value={editedRecord.address?.address2 || ''} 
-            onChange={e => setEditedRecord(r => ({...r, address: {...r.address, address2: e.target.value}}))}
-          />
-        </div>
-      </div>
-      <div className="form-row">
-        <div className="form-group">
-          <label>City</label>
-          <input 
-            value={editedRecord.address?.city || ''} 
-            onChange={e => setEditedRecord(r => ({...r, address: {...r.address, city: e.target.value}}))}
-          />
-        </div>
-        <div className="form-group">
-          <label>State</label>
-          <input 
-            value={editedRecord.address?.state || ''} 
-            onChange={e => setEditedRecord(r => ({...r, address: {...r.address, state: e.target.value}}))}
-          />
-        </div>
-        <div className="form-group">
-          <label>ZIP</label>
-          <input 
-            value={editedRecord.address?.zip || ''} 
-            onChange={e => setEditedRecord(r => ({...r, address: {...r.address, zip: e.target.value}}))}
-          />
-        </div>
-      </div>
-      <div className="form-section-title">Payment Methods ({Object.keys(editedRecord.payment_methods || {}).length})</div>
-      <div className="nested-data">
-        {Object.entries(editedRecord.payment_methods || {}).map(([id, method]) => (
-          <div key={id} className="nested-item">
-            <span className="nested-label">{method.source}</span>
-            <span className="nested-value">{id}</span>
-            {method.balance !== undefined && <span className="nested-badge">${method.balance}</span>}
-          </div>
-        ))}
-      </div>
-    </>
-  )
-  
-  const renderProductFields = () => (
-    <>
-      <div className="form-row">
-        <div className="form-group">
-          <label>Product ID</label>
-          <input value={editedRecord.product_id || ''} disabled />
-        </div>
-        <div className="form-group flex-2">
-          <label>Name</label>
-          <input 
-            value={editedRecord.name || ''} 
-            onChange={e => setEditedRecord(r => ({...r, name: e.target.value}))}
-          />
-        </div>
-      </div>
-      <div className="form-section-title">Variants ({(editedRecord.variants || []).length})</div>
-      <div className="variants-list">
-        {(editedRecord.variants || []).slice(0, 10).map((variant, idx) => (
-          <div key={idx} className="variant-item">
-            <div className="variant-header">
-              <span className="variant-id">{variant.item_id}</span>
-              <span className="variant-price">${variant.price}</span>
-              <span className={`variant-stock ${variant.available ? 'in-stock' : 'out-stock'}`}>
-                {variant.available ? 'In Stock' : 'Out of Stock'}
-              </span>
-            </div>
-            <div className="variant-options">
-              {Object.entries(variant.options || {}).map(([key, value]) => (
-                <span key={key} className="option-tag">{key}: {value}</span>
-              ))}
-            </div>
-          </div>
-        ))}
-        {(editedRecord.variants || []).length > 10 && (
-          <p className="more-items">...and {editedRecord.variants.length - 10} more variants</p>
-        )}
-      </div>
-    </>
-  )
-  
-  const renderOrderFields = () => (
-    <>
-      <div className="form-row">
-        <div className="form-group">
-          <label>Order ID</label>
-          <input value={editedRecord.order_id || ''} disabled />
-        </div>
-        <div className="form-group">
-          <label>User ID</label>
-          <input value={editedRecord.user_id || ''} disabled />
-        </div>
-        <div className="form-group">
-          <label>Status</label>
-          <select 
-            value={editedRecord.status || ''} 
-            onChange={e => setEditedRecord(r => ({...r, status: e.target.value}))}
-          >
-            <option value="pending">Pending</option>
-            <option value="processed">Processed</option>
-            <option value="delivered">Delivered</option>
-            <option value="cancelled">Cancelled</option>
+      )
+    }
+    
+    if (typeof value === 'boolean') {
+      return (
+        <div key={fullPath.join('.')} className="form-group">
+          <label>{formatLabel(key)}</label>
+          <select value={value.toString()} onChange={e => updateField(e.target.value === 'true')}>
+            <option value="true">Yes</option>
+            <option value="false">No</option>
           </select>
         </div>
-      </div>
-      <div className="form-section-title">Items ({(editedRecord.items || []).length})</div>
-      <div className="items-list">
-        {(editedRecord.items || []).map((item, idx) => (
-          <div key={idx} className="order-item">
-            <span className="item-name">{item.name}</span>
-            <span className="item-price">${item.price}</span>
-            <div className="item-options">
-              {Object.entries(item.options || {}).map(([key, value]) => (
-                <span key={key} className="option-tag">{key}: {value}</span>
-              ))}
+      )
+    }
+    
+    if (typeof value === 'number') {
+      return (
+        <div key={fullPath.join('.')} className="form-group">
+          <label>{formatLabel(key)}</label>
+          <input 
+            type="number" 
+            value={value} 
+            onChange={e => updateField(parseFloat(e.target.value) || 0)} 
+          />
+        </div>
+      )
+    }
+    
+    if (typeof value === 'string') {
+      // Check if it's a long string
+      if (value.length > 100) {
+        return (
+          <div key={fullPath.join('.')} className="form-group full-width">
+            <label>{formatLabel(key)}</label>
+            <textarea 
+              value={value} 
+              onChange={e => updateField(e.target.value)}
+              rows={3}
+            />
+          </div>
+        )
+      }
+      return (
+        <div key={fullPath.join('.')} className="form-group">
+          <label>{formatLabel(key)}</label>
+          <input value={value} onChange={e => updateField(e.target.value)} />
+        </div>
+      )
+    }
+    
+    if (Array.isArray(value)) {
+      return (
+        <div key={fullPath.join('.')} className="form-section">
+          <div className="form-section-title">{formatLabel(key)} ({value.length} items)</div>
+          <div className="nested-data">
+            {value.slice(0, 10).map((item, idx) => (
+              <div key={idx} className="nested-item">
+                {typeof item === 'object' ? (
+                  <div className="nested-object-preview">
+                    {Object.entries(item).slice(0, 4).map(([k, v]) => (
+                      <span key={k} className="nested-field">
+                        <span className="nested-label">{formatLabel(k)}:</span>
+                        <span className="nested-value">{typeof v === 'object' ? '{...}' : String(v)}</span>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="nested-value">{String(item)}</span>
+                )}
+              </div>
+            ))}
+            {value.length > 10 && (
+              <p className="more-items">...and {value.length - 10} more items</p>
+            )}
+          </div>
+        </div>
+      )
+    }
+    
+    if (typeof value === 'object') {
+      const entries = Object.entries(value)
+      // For small objects with primitive values, show inline
+      if (entries.length <= 4 && entries.every(([, v]) => typeof v !== 'object')) {
+        return (
+          <div key={fullPath.join('.')} className="form-section">
+            <div className="form-section-title">{formatLabel(key)}</div>
+            <div className="form-row">
+              {entries.map(([k, v]) => renderField(k, v, fullPath))}
             </div>
           </div>
-        ))}
-      </div>
-      <div className="form-section-title">Payment History</div>
-      <div className="payment-history">
-        {(editedRecord.payment_history || []).map((payment, idx) => (
-          <div key={idx} className="payment-item">
-            <span className="payment-type">{payment.transaction_type}</span>
-            <span className="payment-amount">${payment.amount}</span>
-            <span className="payment-method">{payment.payment_method_id}</span>
+        )
+      }
+      // For larger objects
+      return (
+        <div key={fullPath.join('.')} className="form-section">
+          <div className="form-section-title">{formatLabel(key)} ({entries.length} fields)</div>
+          <div className="nested-data">
+            {entries.slice(0, 10).map(([k, v]) => (
+              <div key={k} className="nested-item">
+                <span className="nested-label">{formatLabel(k)}:</span>
+                <span className="nested-value">
+                  {typeof v === 'object' 
+                    ? (Array.isArray(v) ? `[${v.length} items]` : '{...}')
+                    : String(v)}
+                </span>
+              </div>
+            ))}
+            {entries.length > 10 && (
+              <p className="more-items">...and {entries.length - 10} more fields</p>
+            )}
           </div>
-        ))}
-      </div>
-    </>
+        </div>
+      )
+    }
+    
+    return null
+  }
+  
+  // Get display title for the record
+  const getRecordTitle = () => {
+    // Try common naming patterns
+    if (record.name) {
+      if (typeof record.name === 'object') {
+        return `${record.name.first_name || ''} ${record.name.last_name || ''}`.trim()
+      }
+      return record.name
+    }
+    // Try ID fields
+    const idFields = ['user_id', 'product_id', 'order_id', 'flight_number', 'id', 'reservation_id']
+    for (const field of idFields) {
+      if (record[field]) return record[field]
+    }
+    return 'Record'
+  }
+  
+  // Separate fields into primitive and complex
+  const entries = Object.entries(editedRecord).filter(([key]) => key !== 'id')
+  const primitiveFields = entries.filter(([, v]) => 
+    v === null || v === undefined || typeof v !== 'object'
+  )
+  const complexFields = entries.filter(([, v]) => 
+    v !== null && v !== undefined && typeof v === 'object'
   )
   
   return (
     <div className="record-detail-panel">
       <div className="panel-header">
-        <h3>
-          {type === 'users' && `User: ${record.name?.first_name} ${record.name?.last_name}`}
-          {type === 'products' && `Product: ${record.name}`}
-          {type === 'orders' && `Order: ${record.order_id}`}
-        </h3>
+        <h3>{formatLabel(type.replace(/s$/, ''))}: {getRecordTitle()}</h3>
         <button className="close-btn" onClick={onClose}>×</button>
       </div>
       
       <div className="panel-body">
-        {type === 'users' && renderUserFields()}
-        {type === 'products' && renderProductFields()}
-        {type === 'orders' && renderOrderFields()}
+        {/* Render primitive fields in a grid */}
+        {primitiveFields.length > 0 && (
+          <div className="form-row flex-wrap">
+            {primitiveFields.map(([key, value]) => renderField(key, value))}
+          </div>
+        )}
+        
+        {/* Render complex fields (objects and arrays) */}
+        {complexFields.map(([key, value]) => renderField(key, value))}
       </div>
       
       <div className="panel-footer">
@@ -299,20 +394,42 @@ function DatabaseEditor({ content, onChange }) {
     try {
       return JSON.parse(content)
     } catch {
-      return { users: {}, products: {}, orders: {} }
+      return {}
     }
   })
-  const [activeTab, setActiveTab] = useState('users')
+  
+  // Auto-discover tabs from the database schema
+  const tabs = useMemo(() => {
+    return Object.keys(db)
+      .filter(key => typeof db[key] === 'object' && db[key] !== null && !Array.isArray(db[key]))
+      .map(key => ({
+        id: key,
+        label: formatLabel(key),
+        icon: ICON_MAP[key.toLowerCase()] || ICON_MAP.default
+      }))
+  }, [db])
+  
+  const [activeTab, setActiveTab] = useState(() => tabs[0]?.id || '')
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedRecord, setSelectedRecord] = useState(null)
   const [showRawJson, setShowRawJson] = useState(false)
   
+  // Update active tab when tabs change (e.g., when loading new content)
+  useMemo(() => {
+    if (tabs.length > 0 && !tabs.find(t => t.id === activeTab)) {
+      setActiveTab(tabs[0].id)
+    }
+  }, [tabs, activeTab])
+  
   // Convert object to array for table display
   const getDataArray = (type) => {
     const data = db[type] || {}
+    if (Array.isArray(data)) {
+      return data.map((record, idx) => ({ id: idx, ...record }))
+    }
     return Object.entries(data).map(([id, record]) => ({
       id,
-      ...record,
+      ...(typeof record === 'object' ? record : { value: record }),
     }))
   }
   
@@ -327,56 +444,32 @@ function DatabaseEditor({ content, onChange }) {
     )
   }, [db, activeTab, searchTerm])
   
-  // Column definitions for each type
-  const getColumns = (type) => {
-    switch (type) {
-      case 'users':
-        return [
-          { key: 'user_id', label: 'User ID' },
-          { key: 'name', label: 'Name', render: (_, row) => `${row.name?.first_name || ''} ${row.name?.last_name || ''}` },
-          { key: 'email', label: 'Email' },
-          { key: 'address', label: 'City', render: (_, row) => row.address?.city || '-' },
-          { key: 'orders', label: 'Orders', render: (orders) => (orders || []).length },
-        ]
-      case 'products':
-        return [
-          { key: 'product_id', label: 'Product ID' },
-          { key: 'name', label: 'Name' },
-          { key: 'variants', label: 'Variants', render: (variants) => (variants || []).length },
-          { key: 'price', label: 'Price Range', render: (_, row) => {
-            const prices = (row.variants || []).map(v => v.price).filter(Boolean)
-            if (prices.length === 0) return '-'
-            return `$${Math.min(...prices)} - $${Math.max(...prices)}`
-          }},
-        ]
-      case 'orders':
-        return [
-          { key: 'order_id', label: 'Order ID' },
-          { key: 'user_id', label: 'User ID' },
-          { key: 'status', label: 'Status', render: (status) => (
-            <span className={`status-badge ${status}`}>{status}</span>
-          )},
-          { key: 'items', label: 'Items', render: (items) => (items || []).length },
-          { key: 'total', label: 'Total', render: (_, row) => {
-            const total = (row.items || []).reduce((sum, item) => sum + (item.price || 0), 0)
-            return `$${total.toFixed(2)}`
-          }},
-        ]
-      default:
-        return []
-    }
-  }
+  // Auto-discover columns for current tab
+  const columns = useMemo(() => {
+    return discoverColumns(filteredData)
+  }, [filteredData])
   
   const handleRecordSave = (updatedRecord) => {
-    const key = activeTab === 'users' ? updatedRecord.user_id :
-                activeTab === 'products' ? updatedRecord.product_id :
-                updatedRecord.order_id
+    // Find the key field for this record
+    const idFields = ['user_id', 'product_id', 'order_id', 'flight_number', 'reservation_id', 'id']
+    let key = updatedRecord.id
+    
+    for (const field of idFields) {
+      if (updatedRecord[field]) {
+        key = updatedRecord[field]
+        break
+      }
+    }
+    
+    // Remove the internal 'id' field we added for table tracking
+    const recordToSave = { ...updatedRecord }
+    delete recordToSave.id
     
     const newDb = {
       ...db,
       [activeTab]: {
         ...db[activeTab],
-        [key]: updatedRecord
+        [key]: recordToSave
       }
     }
     setDb(newDb)
@@ -412,15 +505,34 @@ function DatabaseEditor({ content, onChange }) {
     )
   }
   
+  // Handle empty or invalid JSON
+  if (tabs.length === 0) {
+    return (
+      <div className="database-editor">
+        <div className="editor-toolbar">
+          <div className="toolbar-right">
+            <button className="toggle-view-btn" onClick={() => setShowRawJson(true)}>
+              Edit Raw JSON
+            </button>
+          </div>
+        </div>
+        <div className="empty-state">
+          <p>No collections found in this database.</p>
+          <p>Click "Edit Raw JSON" to add data.</p>
+        </div>
+      </div>
+    )
+  }
+  
   return (
     <div className="database-editor">
       <div className="editor-toolbar">
         <div className="tabs">
-          {TABS.map(tab => (
+          {tabs.map(tab => (
             <button
               key={tab.id}
               className={`tab ${activeTab === tab.id ? 'active' : ''}`}
-              onClick={() => { setActiveTab(tab.id); setSelectedRecord(null); }}
+              onClick={() => { setActiveTab(tab.id); setSelectedRecord(null); setSearchTerm(''); }}
             >
               <span className="tab-icon">{tab.icon}</span>
               <span className="tab-label">{tab.label}</span>
@@ -447,7 +559,7 @@ function DatabaseEditor({ content, onChange }) {
         <div className={`table-area ${selectedRecord ? 'with-detail' : ''}`}>
           <DataTable
             data={filteredData}
-            columns={getColumns(activeTab)}
+            columns={columns}
             onRowClick={setSelectedRecord}
             selectedId={selectedRecord?.id}
           />

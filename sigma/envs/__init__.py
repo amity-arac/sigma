@@ -1,8 +1,50 @@
 # Copyright Amity
+"""
+Sigma Environments Package
+
+This package provides environment management for the sigma simulator:
+- Environment base classes and generic environment creation
+- Path constants and file management
+- Pydantic models for API operations
+"""
 
 from typing import Optional, Union
+
 from sigma.envs.base import Env
 from sigma.envs.user import UserStrategy
+
+# Path constants
+from sigma.envs.paths import (
+    DATA_ENVS_PATH,
+    SOURCE_ENVS_PATH,
+    ENVS_PATH,
+    get_env_data_path,
+    get_env_source_path,
+    get_env_file_path,
+)
+
+# Pydantic models for API
+from sigma.envs.models import (
+    EnvironmentFileInfo,
+    EnvironmentFilesResponse,
+    EnvironmentFileContentResponse,
+    UpdateEnvironmentFileRequest,
+    EnvironmentInfo,
+)
+
+# File management operations
+from sigma.envs.manager import (
+    EDITABLE_ENV_FILES,
+    get_editable_files,
+    is_file_editable,
+    list_env_files,
+    get_env_files_response,
+    get_env_file,
+    get_env_file_response,
+    update_env_file,
+    env_exists,
+    list_available_envs,
+)
 
 
 def get_env(
@@ -35,3 +77,36 @@ def get_env(
         )
     else:
         raise ValueError(f"Unknown environment: {env_name}")
+
+
+__all__ = [
+    # Base classes
+    "Env",
+    "UserStrategy",
+    # Path constants
+    "DATA_ENVS_PATH",
+    "SOURCE_ENVS_PATH",
+    "ENVS_PATH",
+    "get_env_data_path",
+    "get_env_source_path",
+    "get_env_file_path",
+    # Pydantic models
+    "EnvironmentFileInfo",
+    "EnvironmentFilesResponse",
+    "EnvironmentFileContentResponse",
+    "UpdateEnvironmentFileRequest",
+    "EnvironmentInfo",
+    # File management
+    "EDITABLE_ENV_FILES",
+    "get_editable_files",
+    "is_file_editable",
+    "list_env_files",
+    "get_env_files_response",
+    "get_env_file",
+    "get_env_file_response",
+    "update_env_file",
+    "env_exists",
+    "list_available_envs",
+    # Environment factory
+    "get_env",
+]

@@ -4,12 +4,55 @@ import { generateResponse } from '../../services/api'
 import ToolsList from '../sidebar/ToolsList'
 import './MobileInfoPanel.css'
 
+// Helper to parse and format policy answer with highlighted citations
+function PolicyAnswer({ answer }) {
+  if (!answer) return null
+  
+  // Split by common policy citation patterns
+  const parts = answer.split(/(Policy Basis:|Relevant Policy:|From the policy:|Policy Reference:|\*\*Policy Basis:\*\*|\*\*Answer:\*\*)/gi)
+  
+  if (parts.length <= 1) {
+    // No explicit citation found, try to detect quoted text
+    const quotedParts = answer.split(/("[^"]+"|'[^']+')/g)
+    return (
+      <div className="policy-answer-content">
+        {quotedParts.map((part, i) => {
+          if (part.startsWith('"') || part.startsWith("'")) {
+            return <span key={i} className="policy-quote-highlight">{part}</span>
+          }
+          return <span key={i}>{part}</span>
+        })}
+      </div>
+    )
+  }
+  
+  return (
+    <div className="policy-answer-content">
+      {parts.map((part, i) => {
+        if (/Policy Basis:|\*\*Policy Basis:\*\*/i.test(part)) {
+          return <span key={i} className="policy-section-label">📜 Policy Basis:</span>
+        }
+        if (/\*\*Answer:\*\*/i.test(part)) {
+          return <span key={i} className="policy-section-label">💡 Answer:</span>
+        }
+        if (/Relevant Policy:|From the policy:|Policy Reference:/i.test(part)) {
+          return <span key={i} className="policy-section-label">{part}</span>
+        }
+        // Check if this part comes after a policy label
+        if (i > 0 && /Policy Basis:|Relevant Policy:|From the policy:|Policy Reference:|\*\*Policy Basis:\*\*/i.test(parts[i - 1])) {
+          return <div key={i} className="policy-citation-block">{part.trim()}</div>
+        }
+        return <span key={i}>{part}</span>
+      })}
+    </div>
+  )
+}
+
 function MobileInfoPanel({ onNewSession }) {
   const [isOpen, setIsOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState('wiki')  // Default to policy tab
+  const [activeTab, setActiveTab] = useState('policyai')  // Default to Policy AI tab
   const [policyQuestion, setPolicyQuestion] = useState('')
   const [isAskingPolicy, setIsAskingPolicy] = useState(false)
-  const [qaTrayExpanded, setQaTrayExpanded] = useState(false)
   const [qaConversation, setQaConversation] = useState([])  // Array of {question, answer}
   const qaScrollRef = useRef(null)
   const qaInputRef = useRef(null)
@@ -32,15 +75,17 @@ function MobileInfoPanel({ onNewSession }) {
     }
   }, [qaConversation])
 
-  const expandAndFocusInput = () => {
-    setQaTrayExpanded(true)
-    // Focus after a short delay to allow expansion animation
-    setTimeout(() => {
-      qaInputRef.current?.focus()
-    }, 100)
-  }
+  // Focus input when switching to policy AI tab
+  useEffect(() => {
+    if (activeTab === 'policyai' && isOpen) {
+      setTimeout(() => {
+        qaInputRef.current?.focus()
+      }, 100)
+    }
+  }, [activeTab, isOpen])
 
   const tabs = [
+    { id: 'policyai', label: '🤖 Policy AI', icon: '🤖' },
     { id: 'wiki', label: '📖 Policy', icon: '📖' },
     { id: 'persona', label: '👤 Persona', icon: '👤' },
     { id: 'tools', label: '🔧 Tools', icon: '🔧' },
@@ -53,7 +98,6 @@ function MobileInfoPanel({ onNewSession }) {
     const currentQuestion = policyQuestion.trim()
     setIsAskingPolicy(true)
     setPolicyQuestion('')
-    setQaTrayExpanded(true)  // Auto-expand tray when asking
     
     // Add question to conversation immediately
     setQaConversation(prev => [...prev, { question: currentQuestion, answer: null, isLoading: true }])
@@ -69,10 +113,13 @@ ${wiki}
 
 Agent's Question: ${currentQuestion}
 
-Provide a clear, actionable answer. IMPORTANT: Always cite the specific policy section or rule you're basing your answer on by quoting the relevant text from the policy. Format your response as:
+IMPORTANT: You MUST structure your response EXACTLY as follows:
 
-1. Answer: [Your direct answer]
-2. Policy Basis: [Quote the exact policy text that supports this answer]`
+**Answer:** [Provide a clear, direct, and actionable answer to the agent's question]
+
+**Policy Basis:** [Quote the EXACT text from the policy document that supports your answer. Use quotation marks around the exact policy text. If multiple sections apply, list each one.]
+
+Be specific and cite the actual policy text. Do not paraphrase - use exact quotes from the policy.`
       const result = await generateResponse(sessionId, prompt)
       const answer = result.response || 'Unable to generate answer'
       
@@ -157,6 +204,68 @@ Provide a clear, actionable answer. IMPORTANT: Always cite the specific policy s
 
         {/* Tab content */}
         <div className="mobile-info-content">
+          {activeTab === 'policyai' && (
+            <div className="info-section policy-ai-section">
+              {wiki && sessionId ? (
+                <div className="policy-ai-container">
+                  {/* Q&A Conversation Area */}
+                  <div className="policy-qa-conversation-full" ref={qaScrollRef}>
+                    {qaConversation.length === 0 ? (
+                      <div className="qa-empty-state">
+                        <span>🤖</span>
+                        <h4>Policy AI Assistant</h4>
+                        <p>Ask questions about the policy and I'll help you find the right answer with exact citations from the policy document.</p>
+                      </div>
+                    ) : (
+                      qaConversation.map((item, index) => (
+                        <div key={index} className="qa-exchange">
+                          <div className="qa-question">
+                            <span className="qa-role">👤 You</span>
+                            <p>{item.question}</p>
+                          </div>
+                          <div className="qa-answer">
+                            <span className="qa-role">🤖 Policy AI</span>
+                            {item.isLoading ? (
+                              <p className="qa-loading">Searching policy...</p>
+                            ) : (
+                              <PolicyAnswer answer={item.answer} />
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  
+                  {/* Input Row - Fixed at bottom */}
+                  <div className="policy-qa-input-row-fixed">
+                    <input
+                      ref={qaInputRef}
+                      type="text"
+                      className="policy-qa-input"
+                      placeholder="Ask about policy..."
+                      value={policyQuestion}
+                      onChange={(e) => setPolicyQuestion(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAskPolicy()}
+                      disabled={isAskingPolicy}
+                    />
+                    <button
+                      className="policy-qa-btn"
+                      onClick={handleAskPolicy}
+                      disabled={isAskingPolicy || !policyQuestion.trim()}
+                    >
+                      {isAskingPolicy ? '...' : '↑'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="qa-empty-state">
+                  <span>🤖</span>
+                  <p>Load a policy document to use Policy AI</p>
+                </div>
+              )}
+            </div>
+          )}
+
           {activeTab === 'settings' && (
             <div className="info-section">
               <div className="mobile-settings">
@@ -213,97 +322,10 @@ Provide a clear, actionable answer. IMPORTANT: Always cite the specific policy s
           )}
 
           {activeTab === 'wiki' && (
-            <div className="info-section wiki-section">
-              {/* Scrollable Policy Content */}
-              <div className="wiki-content-wrapper">
-                <div className="wiki-content">
-                  {wiki || 'No wiki loaded'}
-                </div>
+            <div className="info-section">
+              <div className="wiki-content">
+                {wiki || 'No wiki loaded'}
               </div>
-              
-              {/* Slide-up Q&A Tray */}
-              {wiki && sessionId && (
-                <div className={`policy-qa-tray ${qaTrayExpanded ? 'expanded' : ''}`}>
-                  {/* Collapsed State - Shows compose bar */}
-                  {!qaTrayExpanded && (
-                    <div className="policy-qa-collapsed" onClick={expandAndFocusInput}>
-                      <div className="tray-handle-bar"></div>
-                      <div className="collapsed-compose-bar">
-                        <span className="collapsed-compose-icon">🤖</span>
-                        <span className="collapsed-compose-placeholder">Ask Policy Support AI...</span>
-                        {qaConversation.length > 0 && (
-                          <span className="collapsed-compose-badge">{qaConversation.length}</span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Expanded State - Full tray */}
-                  {qaTrayExpanded && (
-                    <>
-                      {/* Tray Handle */}
-                      <div 
-                        className="policy-qa-tray-handle"
-                        onClick={() => setQaTrayExpanded(false)}
-                      >
-                        <div className="tray-handle-bar"></div>
-                        <span className="tray-handle-label">
-                          ▼ Policy Q&A
-                          {qaConversation.length > 0 && ` (${qaConversation.length})`}
-                        </span>
-                      </div>
-                      
-                      {/* Q&A Conversation Area */}
-                      <div className="policy-qa-conversation" ref={qaScrollRef}>
-                        {qaConversation.length === 0 ? (
-                          <div className="qa-empty-state">
-                            <span>🤖</span>
-                            <p>Ask questions about the policy and I'll help you find the right answer with citations.</p>
-                          </div>
-                        ) : (
-                          qaConversation.map((item, index) => (
-                            <div key={index} className="qa-exchange">
-                              <div className="qa-question">
-                                <span className="qa-role">👤 You</span>
-                                <p>{item.question}</p>
-                              </div>
-                              <div className="qa-answer">
-                                <span className="qa-role">🤖 Policy AI</span>
-                                {item.isLoading ? (
-                                  <p className="qa-loading">Searching policy...</p>
-                                ) : (
-                                  <p>{item.answer}</p>
-                                )}
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                      
-                      {/* Input Row */}
-                      <div className="policy-qa-input-row">
-                        <input
-                          ref={qaInputRef}
-                          type="text"
-                          className="policy-qa-input"
-                          placeholder="Ask about policy..."
-                          value={policyQuestion}
-                          onChange={(e) => setPolicyQuestion(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && handleAskPolicy()}
-                          disabled={isAskingPolicy}
-                        />
-                        <button
-                          className="policy-qa-btn"
-                          onClick={handleAskPolicy}
-                          disabled={isAskingPolicy || !policyQuestion.trim()}
-                        >
-                          {isAskingPolicy ? '...' : '↑'}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
             </div>
           )}
         </div>

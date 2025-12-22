@@ -11,7 +11,8 @@ data/envs/
     ├── tasks.json       # Tasks with user scenarios and evaluation criteria
     ├── policy.md        # Agent policy, guidelines, and behavioral rules
     ├── user_guidelines.md   # User simulation guidelines
-    └── agent_guidelines.md  # Agent-specific guidelines
+    ├── agent_guidelines.md  # Agent-specific guidelines
+    └── tools.py         # Python tool implementations
 ```
 
 ## File Descriptions
@@ -49,6 +50,12 @@ Guidelines for simulating realistic user behavior:
 ### agent_guidelines.md
 Additional agent-specific guidelines and context.
 
+### tools.py
+Python module containing tool implementations for the environment:
+- Tool classes that extend the base `Tool` class
+- Each tool has `invoke()` and `get_info()` methods
+- `ALL_TOOLS` list exporting all available tools
+
 ## Adding a New Environment
 
 1. Create a new folder: `data/envs/<env_name>/`
@@ -56,9 +63,9 @@ Additional agent-specific guidelines and context.
    - `db.json` (required)
    - `tasks.json` (required)
    - `policy.md` (required)
+   - `tools.py` (required) - Python tool implementations
 3. Add optional files as needed
-4. Create `sigma/envs/<env_name>/tools.py` with tool implementations
-5. The environment will be auto-detected on server restart
+4. The environment will be auto-detected on server restart
 
 ## Editing Files
 

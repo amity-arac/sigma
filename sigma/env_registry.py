@@ -22,19 +22,11 @@ Data files are kept separate from source code:
 
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Type
-import os
 import json
+import os
 
-
-# Path to data environments folder (data files: db.json, tasks.json, policy.md, etc.)
-# This is at root/data/envs, separate from source code
-DATA_ENVS_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "envs")
-
-# Path to source environments folder (tools.py only)
-SOURCE_ENVS_PATH = os.path.join(os.path.dirname(__file__), "envs")
-
-# Legacy alias for backward compatibility
-ENVS_PATH = DATA_ENVS_PATH
+# Import path constants from centralized location
+from sigma.envs.paths import DATA_ENVS_PATH, SOURCE_ENVS_PATH, ENVS_PATH
 
 
 @dataclass

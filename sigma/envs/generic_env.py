@@ -9,27 +9,20 @@ Data files are stored in data/envs/<env_name>/:
 - tasks.json: Tasks in the standard format
 - policy.md: Agent policy (includes behavioral rules)
 - user_guidelines.md: (optional) User simulation guidelines
+- tools.py: Python tool implementations
 
-Source files (tools.py) are stored in sigma/envs/<env_name>/.
+All environment files including tools.py are now stored in data/envs/<env_name>/.
 """
 
+import importlib.util
 import json
 import os
 from typing import Any, Dict, List, Optional, Union
 
 from sigma.envs.base import Env
 from sigma.envs.user import UserStrategy
+from sigma.envs.paths import DATA_ENVS_PATH, SOURCE_ENVS_PATH, ENVS_PATH
 from sigma.types import Task, Action
-
-
-# Path to data environments folder (data files: db.json, tasks.json, policy.md, etc.)
-DATA_ENVS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "envs")
-
-# Path to source environments folder (tools.py only)
-SOURCE_ENVS_PATH = os.path.dirname(__file__)
-
-# Legacy alias
-ENVS_PATH = DATA_ENVS_PATH
 
 
 def load_env_data(env_name: str) -> Dict[str, Any]:
@@ -173,17 +166,42 @@ def convert_tasks_to_task_objects(raw_tasks: List[Dict[str, Any]]) -> List[Task]
     return tasks
 
 
+def load_tools_from_file(env_name: str) -> List:
+    """
+    Load tools from tools.py in the data/envs/<env_name>/ folder.
+    
+    Uses importlib.util to dynamically load the Python file from the data folder.
+    """
+    tools_path = os.path.join(DATA_ENVS_PATH, env_name, "tools.py")
+    
+    if not os.path.exists(tools_path):
+        raise FileNotFoundError(f"Tools file not found: {tools_path}")
+    
+    # Create a unique module name to avoid conflicts
+    module_name = f"sigma_env_tools_{env_name}"
+    
+    spec = importlib.util.spec_from_file_location(module_name, tools_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load tools from {tools_path}")
+    
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    
+    if not hasattr(module, "ALL_TOOLS"):
+        raise AttributeError(f"tools.py must define ALL_TOOLS list")
+    
+    return module.ALL_TOOLS
+
+
 def create_generic_env_class(env_name: str):
     """
     Create a generic environment class for the given environment.
     
     This dynamically creates an Env subclass that loads data from the
-    environment's data files in data/envs/<env_name>/ and tools from
-    sigma/envs/<env_name>/tools.py.
+    environment's data files in data/envs/<env_name>/ including tools.py.
     """
-    # Import tools from env's tools.py in source directory
-    tools_module = __import__(f"sigma.envs.{env_name}.tools", fromlist=["ALL_TOOLS"])
-    ALL_TOOLS = tools_module.ALL_TOOLS
+    # Load tools from env's tools.py in data directory
+    ALL_TOOLS = load_tools_from_file(env_name)
     
     # Get the path to this environment's data folder
     env_path = os.path.join(DATA_ENVS_PATH, env_name)

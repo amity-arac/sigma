@@ -552,6 +552,103 @@
   outline: none;
 }
 
+/* Empty State */
+.database-editor .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 40px;
+  color: var(--text-secondary, #a0a0b0);
+  text-align: center;
+}
+
+.database-editor .empty-state p {
+  margin: 8px 0;
+}
+
+/* Form enhancements for dynamic schema */
+.form-row.flex-wrap {
+  flex-wrap: wrap;
+}
+
+.form-group.full-width {
+  flex: 0 0 100%;
+}
+
+.form-group textarea {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-secondary, #16162a);
+  border: 1px solid var(--border-color, #2d2d44);
+  border-radius: 4px;
+  color: var(--text-primary, #fff);
+  font-size: 13px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--accent-color, #6366f1);
+}
+
+.form-section {
+  margin-bottom: 16px;
+}
+
+.nested-object-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.nested-field {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.nested-field .nested-label {
+  font-size: 12px;
+  min-width: auto;
+}
+
+.nested-field .nested-value {
+  font-size: 12px;
+}
+
+/* Additional status badges for airline and other schemas */
+.status-badge.available {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.status-badge.landed {
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+}
+
+.status-badge.confirmed {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.status-badge.gold {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+}
+
+.status-badge.silver {
+  background: rgba(156, 163, 175, 0.2);
+  color: #9ca3af;
+}
+
+.status-badge.bronze {
+  background: rgba(180, 83, 9, 0.2);
+  color: #d97706;
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
   .table-area.with-detail {

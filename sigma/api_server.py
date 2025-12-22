@@ -32,7 +32,19 @@ from sigma.simulator_core import (
     get_available_environments,
     load_persona_file,
 )
-from sigma.env_registry import get_environment_config, list_environments, DATA_ENVS_PATH
+from sigma.env_registry import get_environment_config, list_environments
+from sigma.envs import (
+    DATA_ENVS_PATH,
+    EnvironmentInfo,
+    EnvironmentFileInfo,
+    EnvironmentFilesResponse,
+    EnvironmentFileContentResponse,
+    UpdateEnvironmentFileRequest,
+    EDITABLE_ENV_FILES,
+    list_env_files,
+    get_env_file,
+    update_env_file,
+)
 from sigma.trajectory_storage import (
     TrajectoryStorage,
     TrajectoryData,
@@ -43,6 +55,11 @@ from sigma.trajectory_storage import (
     check_storage_configuration,
 )
 from sigma.trajectory import Trajectory, TrajectoryError
+from sigma.exports import (
+    ExportTrajectoryRequest,
+    ExportTrajectoryResponse,
+    convert_trajectories,
+)
 
 
 # =============================================================================
@@ -206,21 +223,7 @@ class UpdateTrajectoryRequest(BaseModel):
     reward: Optional[float] = None
 
 
-class ExportTrajectoryRequest(BaseModel):
-    """Request to export trajectories as training data."""
-    format: str  # 'dpo', 'grpo', or 'sft'
-    env_name: Optional[str] = None  # Filter by environment
-    trajectory_ids: Optional[List[str]] = None  # Optional: specific trajectories to export
-    date_filter: Optional[str] = None  # Optional: filter by date (YYYY-MM-DD)
-
-
-class ExportTrajectoryResponse(BaseModel):
-    """Response from exporting trajectories."""
-    success: bool
-    format: str
-    count: int  # Number of records exported
-    data: str  # JSONL content as string
-    error: Optional[str] = None
+# ExportTrajectoryRequest and ExportTrajectoryResponse are imported from sigma.exports
 
 
 class FinalResultResponse(BaseModel):
@@ -234,38 +237,8 @@ class FinalResultResponse(BaseModel):
     conversation_history: List[Dict[str, Any]]
 
 
-class EnvironmentInfo(BaseModel):
-    """Information about an available environment."""
-    name: str
-    display_name: str
-    description: str
-
-
-class EnvironmentFileInfo(BaseModel):
-    """Information about a file in an environment."""
-    name: str
-    type: str  # 'json', 'markdown', 'text'
-    size: int
-    description: str
-
-
-class EnvironmentFilesResponse(BaseModel):
-    """Response containing list of environment files."""
-    env_name: str
-    files: List[EnvironmentFileInfo]
-
-
-class EnvironmentFileContentResponse(BaseModel):
-    """Response containing file content."""
-    env_name: str
-    filename: str
-    content: str
-    type: str
-
-
-class UpdateEnvironmentFileRequest(BaseModel):
-    """Request to update an environment file."""
-    content: str
+# EnvironmentFileInfo, EnvironmentFilesResponse, EnvironmentFileContentResponse,
+# UpdateEnvironmentFileRequest are imported from sigma.envs
 
 
 class ToolInfoResponse(BaseModel):
@@ -455,6 +428,21 @@ async def admin_page():
     return HTMLResponse(content="<h1>Admin page not available</h1>")
 
 
+@app.get("/env-config")
+async def env_config_page():
+    """Serve the environment configuration page (SPA routing - same index.html)."""
+    react_index = REACT_DIST_DIR / "index.html"
+    if react_index.exists():
+        return FileResponse(str(react_index))
+    assets_index = STATIC_DIR / "assets" / "index.html"
+    if assets_index.exists():
+        return FileResponse(str(assets_index))
+    index_path = STATIC_DIR / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
+    return HTMLResponse(content="<h1>Environment config page not available</h1>")
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
@@ -535,109 +523,53 @@ async def get_environment_wiki(env_name: str):
 # Routes - Environment File Management
 # =============================================================================
 
-# Define which files are editable and their descriptions
-EDITABLE_ENV_FILES = {
-    "db.json": {
-        "type": "json",
-        "description": "Database containing users, products, and orders data"
-    },
-    "tasks.json": {
-        "type": "json",
-        "description": "Tasks with user scenarios and evaluation criteria"
-    },
-    "policy.md": {
-        "type": "markdown",
-        "description": "Agent policy and behavioral rules"
-    },
-    "user_guidelines.md": {
-        "type": "markdown",
-        "description": "User simulation guidelines"
-    },
-    "agent_guidelines.md": {
-        "type": "markdown",
-        "description": "Agent-specific guidelines"
-    },
-}
+# EDITABLE_ENV_FILES is imported from sigma.envs
 
 
 @app.get("/environments/{env_name}/files", response_model=EnvironmentFilesResponse)
 async def get_environment_files(env_name: str):
     """Get list of editable files in an environment."""
-    env_path = os.path.join(DATA_ENVS_PATH, env_name)
-    
-    if not os.path.exists(env_path):
-        raise HTTPException(status_code=404, detail=f"Environment '{env_name}' not found")
-    
-    files = []
-    for filename, info in EDITABLE_ENV_FILES.items():
-        file_path = os.path.join(env_path, filename)
-        if os.path.exists(file_path):
-            size = os.path.getsize(file_path)
-            files.append(EnvironmentFileInfo(
-                name=filename,
-                type=info["type"],
-                size=size,
-                description=info["description"]
-            ))
-    
+    files, error = list_env_files(env_name)
+    if error:
+        raise HTTPException(status_code=404, detail=error)
     return EnvironmentFilesResponse(env_name=env_name, files=files)
 
 
 @app.get("/environments/{env_name}/files/{filename}", response_model=EnvironmentFileContentResponse)
-async def get_environment_file(env_name: str, filename: str):
+async def get_environment_file_route(env_name: str, filename: str):
     """Get content of a specific environment file."""
-    if filename not in EDITABLE_ENV_FILES:
-        raise HTTPException(status_code=400, detail=f"File '{filename}' is not editable")
+    content, file_type, error = get_env_file(env_name, filename)
+    if error:
+        if "not editable" in error:
+            raise HTTPException(status_code=400, detail=error)
+        elif "not found" in error:
+            raise HTTPException(status_code=404, detail=error)
+        else:
+            raise HTTPException(status_code=500, detail=error)
     
-    env_path = os.path.join(DATA_ENVS_PATH, env_name)
-    file_path = os.path.join(env_path, filename)
-    
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail=f"File '{filename}' not found in environment '{env_name}'")
-    
-    try:
-        with open(file_path, "r") as f:
-            content = f.read()
-        
-        return EnvironmentFileContentResponse(
-            env_name=env_name,
-            filename=filename,
-            content=content,
-            type=EDITABLE_ENV_FILES[filename]["type"]
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return EnvironmentFileContentResponse(
+        env_name=env_name,
+        filename=filename,
+        content=content,
+        type=file_type
+    )
 
 
 @app.put("/environments/{env_name}/files/{filename}")
-async def update_environment_file(env_name: str, filename: str, request: UpdateEnvironmentFileRequest):
+async def update_environment_file_route(env_name: str, filename: str, request: UpdateEnvironmentFileRequest):
     """Update content of an environment file."""
-    if filename not in EDITABLE_ENV_FILES:
-        raise HTTPException(status_code=400, detail=f"File '{filename}' is not editable")
+    success, error = update_env_file(env_name, filename, request.content)
+    if not success:
+        if "not editable" in error:
+            raise HTTPException(status_code=400, detail=error)
+        elif "not found" in error:
+            raise HTTPException(status_code=404, detail=error)
+        elif "Invalid JSON" in error:
+            raise HTTPException(status_code=400, detail=error)
+        else:
+            raise HTTPException(status_code=500, detail=error)
     
-    env_path = os.path.join(DATA_ENVS_PATH, env_name)
-    file_path = os.path.join(env_path, filename)
-    
-    if not os.path.exists(env_path):
-        raise HTTPException(status_code=404, detail=f"Environment '{env_name}' not found")
-    
-    try:
-        # Validate JSON files
-        if EDITABLE_ENV_FILES[filename]["type"] == "json":
-            try:
-                json.loads(request.content)
-            except json.JSONDecodeError as e:
-                raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
-        
-        # Write the file
-        with open(file_path, "w") as f:
-            f.write(request.content)
-        
-        return {"success": True, "message": f"File '{filename}' updated successfully"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True, "message": f"File '{filename}' updated successfully"}
 
 
 # =============================================================================
@@ -1729,18 +1661,12 @@ async def export_trajectories(request: ExportTrajectoryRequest):
         
         print(f"[Export] Full trajectories loaded: {len(full_trajectories)}")
         
-        # Convert based on format
-        if request.format.lower() == 'dpo':
-            result = _convert_to_dpo_format(full_trajectories)
-            print(f"[Export] DPO conversion result: {len(result)} records")
-        elif request.format.lower() == 'grpo':
-            result = _convert_to_grpo_format(full_trajectories)
-            print(f"[Export] GRPO conversion result: {len(result)} records")
-        elif request.format.lower() == 'sft':
-            result = _convert_to_sft_format(full_trajectories)
-            print(f"[Export] SFT conversion result: {len(result)} records")
-        else:
-            raise HTTPException(status_code=400, detail=f"Unsupported format: {request.format}. Use 'dpo', 'grpo', or 'sft'")
+        # Convert using the exports module
+        try:
+            result = convert_trajectories(request.format, full_trajectories)
+            print(f"[Export] {request.format.upper()} conversion result: {len(result)} records")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         
         return ExportTrajectoryResponse(
             success=True,
@@ -1762,676 +1688,6 @@ async def export_trajectories(request: ExportTrajectoryRequest):
             data="",
             error=str(e)
         )
-
-
-def _convert_to_dpo_format(trajectories: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Convert trajectories to DPO training format.
-    
-    DPO (Direct Preference Optimization) format:
-    - prompt: list of messages representing the conversation history up to the decision point
-    - chosen: list containing the single correct action (what was actually done)
-    - rejected: list containing the single rejected action (what was proposed but rejected)
-    
-    This function looks for trajectories with rejected suggestions (role='rejected')
-    and creates training pairs where the model learns to prefer the chosen action over rejected.
-    """
-    dpo_records = []
-    
-    print(f"[DPO] Processing {len(trajectories)} trajectories")
-    
-    for traj_idx, trajectory in enumerate(trajectories):
-        messages = trajectory.get('messages', [])
-        task_instruction = trajectory.get('task_instruction', '')
-        wiki = trajectory.get('wiki', '')
-        env_name = trajectory.get('env_name', '')
-        session_id = trajectory.get('session_id', '')
-        
-        # Count rejected messages in this trajectory
-        rejected_count = sum(1 for m in messages if m.get('role') == 'rejected')
-        print(f"[DPO] Trajectory {traj_idx} ({session_id[:8] if session_id else 'N/A'}...): {len(messages)} messages, {rejected_count} rejected")
-        
-        # Build system message
-        system_content = f"""
-<instructions>
-You are a customer service agent that helps the user according to the <policy>
-provided below.
-In each turn you can either:
-- Send a message to the user.
-- Make a tool call.
-You cannot do both at the same time.
-Try to be helpful and always follow the policy. Always make sure you generate
-valid JSON only.
-</instructions>
-<policy>
-{wiki}
-</policy>
-"""
-        
-        # Find rejected suggestions and create DPO pairs
-        for i, msg in enumerate(messages):
-            if msg.get('role') == 'rejected':
-                print(f"[DPO]   Found rejection at message {i}")
-                # We found a rejection point - create a DPO pair
-                rejected_data = msg.get('rejected', {})
-                
-                # Build conversation history (prompt) up to this point
-                prompt = []
-                prompt.append({
-                    "role": "system",
-                    "content": system_content.strip()
-                })
-                
-                for prev_msg in messages[:i]:
-                    if prev_msg.get('role') == 'rejected':
-                        continue  # Skip previous rejections
-                    
-                    converted = _convert_message_for_dpo(prev_msg)
-                    if converted:
-                        prompt.append(converted)
-                
-                # The chosen action is the one that came after (find next non-rejected message)
-                chosen_action = None
-                for j in range(i + 1, len(messages)):
-                    next_msg = messages[j]
-                    if next_msg.get('role') != 'rejected':
-                        chosen_action = _convert_message_for_dpo(next_msg)
-                        break
-                
-                # Build rejected action from the rejected suggestion
-                rejected_action = None
-                if rejected_data:
-                    tool_name = rejected_data.get('tool_name')
-                    tool_arguments = rejected_data.get('tool_arguments')
-                    content = rejected_data.get('content')
-                    reasoning = rejected_data.get('reasoning', '')
-                    
-                    # If tool_name is null, try to parse from content field
-                    if not tool_name and content:
-                        parsed_tool = _parse_tool_call_from_content(content)
-                        if parsed_tool:
-                            tool_name = parsed_tool['name']
-                            tool_arguments = parsed_tool['arguments']
-                    
-                    # Only create tool_calls if we have a valid tool_name
-                    if tool_name:
-                        # Ensure tool_arguments is properly serialized
-                        if tool_arguments is None:
-                            args_str = "{}"
-                        elif isinstance(tool_arguments, str):
-                            args_str = tool_arguments
-                        else:
-                            args_str = json.dumps(tool_arguments, ensure_ascii=False)
-                        
-                        rejected_action = {
-                            "role": "assistant",
-                            "content": None,
-                            "tool_calls": [{
-                                "function": {
-                                    "name": tool_name,
-                                    "arguments": args_str
-                                },
-                                "type": "function"
-                            }],
-                            "reasoning_content": reasoning
-                        }
-                    elif content:
-                        rejected_action = {
-                            "role": "assistant",
-                            "content": content,
-                            "reasoning_content": reasoning
-                        }
-                
-                # Only create DPO record if we have valid chosen and rejected actions
-                if chosen_action and rejected_action:
-                    dpo_records.append({
-                        "prompt": prompt,
-                        "chosen": [chosen_action],
-                        "rejected": [rejected_action]
-                    })
-    
-    return dpo_records
-
-
-def _parse_tool_call_from_content(content: str) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
-    """
-    Parse tool name and arguments from a content string that contains embedded tool call info.
-    
-    The content format is typically:
-    "🔧 Calling tool_name\n{json_arguments}"
-    
-    Returns:
-        (tool_name, tool_arguments) or (None, None) if parsing fails
-    """
-    if not content:
-        return None, None
-    
-    # Check for the tool call pattern
-    import re
-    
-    # Pattern: "🔧 Calling <tool_name>\n<json>"
-    match = re.match(r'^🔧 Calling (\w+)\n(.+)$', content, re.DOTALL)
-    if match:
-        tool_name = match.group(1)
-        try:
-            tool_arguments = json.loads(match.group(2))
-            return tool_name, tool_arguments
-        except json.JSONDecodeError:
-            return tool_name, {}
-    
-    return None, None
-
-
-def _convert_message_for_dpo(msg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Convert a trajectory message to DPO format."""
-    role = msg.get('role', '')
-    
-    if role == 'user':
-        return {
-            "role": "user",
-            "content": msg.get('content', '')
-        }
-    elif role == 'agent':
-        result = {
-            "role": "assistant",
-            "content": msg.get('content')
-        }
-        if msg.get('reasoning'):
-            result["reasoning_content"] = msg.get('reasoning')
-        # Check if this agent message has tool_calls
-        tool_name = msg.get('tool_name')
-        tool_arguments = msg.get('tool_arguments')
-        if tool_name:
-            if tool_arguments is None:
-                args_str = "{}"
-            elif isinstance(tool_arguments, str):
-                args_str = tool_arguments
-            else:
-                args_str = json.dumps(tool_arguments, ensure_ascii=False)
-            result["tool_calls"] = [{
-                "function": {
-                    "name": tool_name,
-                    "arguments": args_str
-                },
-                "type": "function"
-            }]
-        return result
-    elif role == 'tool':
-        # Tool call from agent - this represents an assistant making a tool call
-        tool_name = msg.get('tool_name')
-        tool_arguments = msg.get('tool_arguments')
-        
-        # If tool_name is not set, try to parse it from the content field
-        # (some trajectories store tool calls as "🔧 Calling tool_name\n{args}")
-        if not tool_name:
-            content = msg.get('content', '')
-            tool_name, tool_arguments = _parse_tool_call_from_content(content)
-        
-        # Skip if we still have no tool_name - this would create corrupted data
-        if not tool_name:
-            return None
-        
-        # Properly serialize tool_arguments
-        if tool_arguments is None:
-            args_str = "{}"
-        elif isinstance(tool_arguments, str):
-            args_str = tool_arguments
-        else:
-            args_str = json.dumps(tool_arguments, ensure_ascii=False)
-        
-        result = {
-            "role": "assistant",
-            "content": "",
-            "tool_calls": [{
-                "function": {
-                    "name": tool_name,
-                    "arguments": args_str
-                },
-                "type": "function"
-            }]
-        }
-        if msg.get('reasoning'):
-            result["reasoning_content"] = msg.get('reasoning')
-        return result
-    elif role == 'tool-result':
-        # Tool response - this goes back to the model as role "tool"
-        tool_call_id = msg.get('id') or msg.get('tool_call_id') or str(msg.get('timestamp', ''))
-        tool_name = msg.get('tool_name', '')
-        return {
-            "role": "tool",
-            "tool_call_id": tool_call_id,
-            "name": tool_name,
-            "content": msg.get('content', '')
-        }
-    elif role == 'system':
-        return {
-            "role": "system",
-            "content": msg.get('content', '')
-        }
-    
-    return None
-
-
-def _convert_to_grpo_format(trajectories: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Convert trajectories to GRPO training format matching tasks.json structure.
-    
-    The exported format matches the tasks.json schema so it can be used directly
-    as new tasks for training or evaluation:
-    
-    {
-        "id": "string",
-        "description": { "purpose": null, "relevant_policies": null, "notes": null },
-        "user_scenario": {
-            "persona": null,
-            "instructions": {
-                "task_instructions": "...",
-                "domain": "retail",
-                "reason_for_call": "...",
-                "known_info": "...",
-                "unknown_info": "..."
-            }
-        },
-        "db": {
-            "users": { "user_id": {...} },      # User profile data
-            "orders": { "#W123": {...} },       # Orders/reservations from scenario
-            "products": { "prod_id": {...} }   # Augmented data (products, etc.)
-        },
-        "evaluation_criteria": {
-            "actions": [...],  # Ground truth: actual tool calls from trajectory
-            "communicate_info": [...],
-            "nl_assertions": null
-        }
-    }
-    
-    The 'db' field contains the custom DB data from persona_data including:
-    - User profile data injected during scenario simulation
-    - Orders/reservations created for the scenario
-    - Augmented data (products, flights, etc.) that were injected into DB
-    
-    This tells the simulator what to insert into its database before starting simulations,
-    allowing the GRPO learning system to correctly mock database responses.
-    
-    The 'actions' in evaluation_criteria is the ground truth sequence of tool calls
-    that actually happened during the trajectory.
-    """
-    grpo_records = []
-    
-    print(f"[GRPO] Processing {len(trajectories)} trajectories")
-    
-    for idx, trajectory in enumerate(trajectories):
-        messages = trajectory.get('messages', [])
-        task_instruction = trajectory.get('task_instruction', '')
-        user_id = trajectory.get('user_id', '')
-        env_name = trajectory.get('env_name', '')
-        session_id = trajectory.get('session_id', trajectory.get('id', ''))
-        reward = trajectory.get('reward', 0)
-        persona = trajectory.get('persona', '')
-        persona_data = trajectory.get('persona_data', {})
-        
-        # Extract tool call sequence from the actual trajectory (ground truth)
-        actions = []
-        action_counter = 0
-        for msg in messages:
-            if msg.get('role') == 'tool':
-                tool_name = msg.get('tool_name')
-                tool_args = msg.get('tool_arguments', {})
-                
-                # If tool_name is not set, try to parse from content
-                # Format: "🔧 Calling tool_name\n{...json args...}"
-                if not tool_name and msg.get('content'):
-                    content = msg.get('content', '')
-                    if content.startswith('🔧 Calling '):
-                        try:
-                            # Extract tool name from first line
-                            first_line = content.split('\n')[0]
-                            tool_name = first_line.replace('🔧 Calling ', '').strip()
-                            
-                            # Extract JSON arguments from the rest
-                            json_start = content.find('{')
-                            if json_start != -1:
-                                json_str = content[json_start:]
-                                tool_args = json.loads(json_str)
-                        except (json.JSONDecodeError, IndexError, ValueError):
-                            # If parsing fails, skip this message
-                            pass
-                
-                if tool_name:
-                    # Format action matching tasks.json structure
-                    action = {
-                        "action_id": f"{len(grpo_records)}_{action_counter}",
-                        "name": tool_name,
-                        "arguments": tool_args if tool_args else {},
-                        "info": None
-                    }
-                    actions.append(action)
-                    action_counter += 1
-        
-        print(f"[GRPO] Trajectory {idx} ({session_id[:8] if session_id else 'N/A'}...): reward={reward}, {len(actions)} tool calls")
-        
-        # Skip trajectories without any actions (no function calls)
-        if not actions:
-            print(f"[GRPO] Skipping trajectory {idx} - no actions ground truth (no function calls)")
-            continue
-        
-        # Extract user info from persona_data if available
-        user_info = persona_data.get('user', {}) if persona_data else {}
-        user_name = user_info.get('name', {})
-        first_name = user_name.get('first_name', '')
-        last_name = user_name.get('last_name', '')
-        user_address = user_info.get('address', {})
-        zip_code = user_address.get('zip', '')
-        email = user_info.get('email', '')
-        
-        # Build known_info string
-        known_info_parts = []
-        if first_name and last_name:
-            known_info_parts.append(f"You are {first_name} {last_name}")
-            if zip_code:
-                known_info_parts.append(f"in zip code {zip_code}")
-        known_info = " ".join(known_info_parts) + "." if known_info_parts else ""
-        
-        # Build unknown_info (email is commonly "forgotten")
-        unknown_info = "You do not remember your email address." if email else ""
-        
-        # Extract communicate_info from reward_info if available
-        communicate_info = []
-        reward_info = trajectory.get('reward_info', {})
-        if reward_info and 'outputs' in reward_info:
-            outputs = reward_info.get('outputs', {})
-            communicate_info = list(outputs.keys()) if isinstance(outputs, dict) else []
-        
-        # Build db data from persona_data for GRPO training
-        # This includes user profile, orders/reservations, and augmented_data (products, etc.)
-        # so the simulator can insert this data before starting simulations
-        db_data = None
-        if persona_data:
-            db_data = {}
-            
-            # Include user profile data
-            if 'user' in persona_data:
-                db_data['users'] = {
-                    persona_data['user'].get('user_id', user_id): persona_data['user']
-                }
-            
-            # Include orders/reservations data (based on data_key from scenario)
-            # Common data keys: "orders", "reservations", etc.
-            for data_key in ['orders', 'reservations', 'bookings', 'tickets']:
-                if data_key in persona_data and persona_data[data_key]:
-                    db_data[data_key] = persona_data[data_key]
-            
-            # Include augmented_data (products, flights, etc. that were injected into DB)
-            augmented_data = persona_data.get('augmented_data', {})
-            if augmented_data:
-                for collection_name, collection_data in augmented_data.items():
-                    if collection_data:
-                        db_data[collection_name] = collection_data
-            
-            # Only set db_data if we have data
-            if not db_data:
-                db_data = None
-        
-        # Create GRPO record matching tasks.json format
-        record_id = str(len(grpo_records))
-        grpo_record = {
-            "id": record_id,
-            "description": {
-                "purpose": f"Generated from trajectory {session_id[:8] if session_id else 'unknown'}",
-                "relevant_policies": None,
-                "notes": f"Reward: {reward}" if reward is not None else None
-            },
-            "user_scenario": {
-                "persona": None,
-                "instructions": {
-                    "task_instructions": persona or ".",
-                    "domain": env_name or "retail",
-                    "reason_for_call": task_instruction or "",
-                    "known_info": known_info,
-                    "unknown_info": unknown_info
-                }
-            },
-            "db": db_data,  # Data to insert into simulator DB before starting
-            "evaluation_criteria": {
-                "actions": actions,  # Ground truth: actual tool calls from trajectory
-                "communicate_info": communicate_info,
-                "nl_assertions": None
-            }
-        }
-        
-        grpo_records.append(grpo_record)
-    
-    skipped_count = len(trajectories) - len(grpo_records)
-    print(f"[GRPO] Summary: {len(grpo_records)} records created, {skipped_count} skipped (no actions ground truth)")
-    
-    return grpo_records
-
-
-def _convert_to_sft_format(trajectories: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Convert trajectories to SFT (Supervised Fine-Tuning) training format.
-    
-    SFT format:
-    - task_id: identifier for the task
-    - conversations: list of messages up to the decision point (with role, content, tool_calls)
-    - answer: list containing the single correct next action
-    - rubric: evaluation criteria (optional)
-    - reject_rubric: criteria for rejected actions (optional)
-    - reject_answer_raw: raw thinking/reasoning for rejected action (if available)
-    - chosen_answer_raw: raw thinking/reasoning for chosen action (if available)
-    
-    One-to-Many Expansion:
-    Each trajectory generates multiple SFT records - one for each assistant turn.
-    For example, a trajectory with 4 assistant turns generates 4 SFT records,
-    each with progressively longer conversation history.
-    
-    If the trajectory has rejected suggestions, the record at that point will include
-    both reject_answer_raw and chosen_answer_raw for preference learning.
-    """
-    sft_records = []
-    
-    print(f"[SFT] Processing {len(trajectories)} trajectories")
-    
-    for traj_idx, trajectory in enumerate(trajectories):
-        messages = trajectory.get('messages', [])
-        task_instruction = trajectory.get('task_instruction', '')
-        wiki = trajectory.get('wiki', '')
-        env_name = trajectory.get('env_name', '')
-        session_id = trajectory.get('session_id', '')
-        task_id = trajectory.get('task_id', traj_idx)
-        
-        # Build rejection map: index of rejection -> rejected data
-        rejection_map = {}
-        for i, msg in enumerate(messages):
-            if msg.get('role') == 'rejected':
-                rejection_map[i] = msg.get('rejected', {})
-        
-        print(f"[SFT] Trajectory {traj_idx} ({session_id[:8] if session_id else 'N/A'}...): {len(messages)} messages, {len(rejection_map)} rejected")
-        
-        # Always do one-to-many expansion: create one record per assistant turn
-        sft_records_for_traj = _create_sft_records_for_trajectory(
-            messages=messages,
-            task_id=task_id,
-            wiki=wiki,
-            rejection_map=rejection_map
-        )
-        sft_records.extend(sft_records_for_traj)
-    
-    print(f"[SFT] Summary: {len(sft_records)} records created")
-    
-    return sft_records
-
-
-def _create_sft_records_for_trajectory(
-    messages: List[Dict[str, Any]],
-    task_id: Any,
-    wiki: str,
-    rejection_map: Optional[Dict[int, Dict[str, Any]]] = None
-) -> List[Dict[str, Any]]:
-    """
-    Create SFT records for a trajectory with one-to-many expansion.
-    
-    Creates a record at each assistant action point (tool call or response).
-    If rejection_map is provided, includes rejected reasoning at relevant points.
-    
-    Args:
-        messages: List of trajectory messages
-        task_id: Task identifier
-        wiki: Policy/wiki content
-        rejection_map: Optional dict mapping rejection indices to rejected data
-    """
-    sft_records = []
-    rejection_map = rejection_map or {}
-    
-    # Start with initial greeting
-    base_conversations = [{
-        "role": "assistant",
-        "content": "Hi! How can I help you today?",
-        "tool_calls": None
-    }]
-    
-    conversations = list(base_conversations)
-    
-    # Track if the previous message was a rejection (the current assistant turn is the "chosen" action)
-    pending_rejection = None
-    
-    for i, msg in enumerate(messages):
-        role = msg.get('role', '')
-        
-        # Check if this is a rejection marker
-        if role == 'rejected':
-            # Store the rejection data - the next assistant action will be the "chosen" action
-            pending_rejection = msg.get('rejected', {})
-            continue
-        
-        if role in ['agent', 'tool']:
-            # Check if this is an action point (agent response or tool call)
-            converted = _convert_message_for_sft(msg)
-            if converted:
-                # Create SFT record with conversation up to this point as context
-                # and the current action as the answer
-                sft_record = {
-                    "task_id": task_id,
-                    "conversations": list(conversations),
-                    "answer": [converted],
-                    "rubric": "",
-                    "reject_rubric": ""
-                }
-                
-                # Add chosen reasoning if available
-                reasoning = msg.get('reasoning', '')
-                if reasoning:
-                    sft_record["chosen_answer_raw"] = reasoning
-                
-                # If there was a pending rejection, add the rejected reasoning
-                if pending_rejection:
-                    rejected_reasoning = pending_rejection.get('reasoning', '')
-                    if rejected_reasoning:
-                        sft_record["reject_answer_raw"] = rejected_reasoning
-                    pending_rejection = None  # Clear the pending rejection
-                
-                sft_records.append(sft_record)
-                
-                # Add this message to the conversation for subsequent records
-                conversations.append(converted)
-        elif role in ['user', 'tool-result']:
-            # Add to conversation history
-            converted = _convert_message_for_sft(msg)
-            if converted:
-                conversations.append(converted)
-    
-    return sft_records
-
-
-def _convert_message_for_sft(msg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Convert a trajectory message to SFT format."""
-    role = msg.get('role', '')
-    
-    if role == 'user':
-        return {
-            "role": "user",
-            "content": msg.get('content', ''),
-            "tool_calls": None
-        }
-    elif role == 'agent':
-        result = {
-            "role": "assistant",
-            "content": msg.get('content'),
-            "tool_calls": None
-        }
-        
-        # Check if this agent message has tool_calls
-        tool_name = msg.get('tool_name')
-        tool_arguments = msg.get('tool_arguments')
-        if tool_name:
-            # Format arguments properly
-            if tool_arguments is None:
-                args = {}
-            elif isinstance(tool_arguments, str):
-                try:
-                    args = json.loads(tool_arguments)
-                except json.JSONDecodeError:
-                    args = {}
-            else:
-                args = tool_arguments
-            
-            result["tool_calls"] = [{
-                "id": f"chatcmpl-tool-{msg.get('id', '')}",
-                "name": tool_name,
-                "arguments": args,
-                "requestor": "assistant"
-            }]
-        return result
-    elif role == 'tool':
-        # Tool call from agent - represents assistant making a tool call
-        tool_name = msg.get('tool_name')
-        tool_arguments = msg.get('tool_arguments')
-        
-        # If tool_name is not set, try to parse from content
-        if not tool_name:
-            content = msg.get('content', '')
-            parsed = _parse_tool_call_from_content(content)
-            if parsed:
-                tool_name, tool_arguments = parsed
-        
-        if not tool_name:
-            return None
-        
-        # Format arguments properly
-        if tool_arguments is None:
-            args = {}
-        elif isinstance(tool_arguments, str):
-            try:
-                args = json.loads(tool_arguments)
-            except json.JSONDecodeError:
-                args = {}
-        else:
-            args = tool_arguments
-        
-        return {
-            "role": "assistant",
-            "content": None,
-            "tool_calls": [{
-                "id": f"chatcmpl-tool-{msg.get('id', '')}",
-                "name": tool_name,
-                "arguments": args,
-                "requestor": "assistant"
-            }]
-        }
-    elif role == 'tool-result':
-        # Tool response - goes back to the model
-        return {
-            "role": "tool",
-            "content": msg.get('content', ''),
-            "tool_calls": None
-        }
-    elif role == 'system':
-        return {
-            "role": "system",
-            "content": msg.get('content', ''),
-            "tool_calls": None
-        }
-    
-    return None
 
 
 # =============================================================================
@@ -2586,6 +1842,132 @@ async def trajectory_page():
     if index_path.exists():
         return FileResponse(str(index_path))
     return HTMLResponse(content="<h1>Page not available</h1>")
+
+
+# =============================================================================
+# WebSocket for Real-time Communication
+# =============================================================================
+
+class ConnectionManager:
+    """Manages WebSocket connections."""
+    
+    def __init__(self):
+        self.active_connections: Dict[str, WebSocket] = {}
+    
+    async def connect(self, session_id: str, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections[session_id] = websocket
+    
+    def disconnect(self, session_id: str):
+        if session_id in self.active_connections:
+            del self.active_connections[session_id]
+    
+    async def send_message(self, session_id: str, message: Dict[str, Any]):
+        if session_id in self.active_connections:
+            await self.active_connections[session_id].send_json(message)
+
+
+ws_manager = ConnectionManager()
+
+
+@app.websocket("/ws/{session_id}")
+async def websocket_endpoint(websocket: WebSocket, session_id: str):
+    """WebSocket endpoint for real-time simulation."""
+    simulator = session_manager.get_session(session_id)
+    if not simulator:
+        await websocket.close(code=4004, reason="Session not found")
+        return
+    
+    await ws_manager.connect(session_id, websocket)
+    
+    try:
+        while True:
+            # Receive message from client
+            data = await websocket.receive_json()
+            action_type = data.get("type")
+            
+            if action_type == "start":
+                # Start the simulation
+                initial_message = simulator.start()
+                await websocket.send_json({
+                    "type": "user_message",
+                    "content": initial_message,
+                    "persona": simulator.current_persona,
+                })
+            
+            elif action_type == "respond":
+                # Send response to user
+                message = data.get("message", "")
+                result = simulator.respond_to_user(message)
+                
+                await websocket.send_json({
+                    "type": "agent_message",
+                    "content": message,
+                })
+                
+                if result.done:
+                    await websocket.send_json({
+                        "type": "simulation_end",
+                        "result": simulator.get_final_result(),
+                    })
+                else:
+                    await websocket.send_json({
+                        "type": "user_message",
+                        "content": result.observation,
+                    })
+            
+            elif action_type == "tool_call":
+                # Call a tool
+                tool_name = data.get("tool_name")
+                arguments = data.get("arguments", {})
+                
+                await websocket.send_json({
+                    "type": "tool_call",
+                    "tool_name": tool_name,
+                    "arguments": arguments,
+                })
+                
+                result = simulator.call_tool(tool_name, arguments)
+                
+                await websocket.send_json({
+                    "type": "tool_result",
+                    "content": result.observation,
+                })
+                
+                if result.done:
+                    await websocket.send_json({
+                        "type": "simulation_end",
+                        "result": simulator.get_final_result(),
+                    })
+            
+            elif action_type == "generate_response":
+                # Generate response using LLM
+                prompt = data.get("prompt", "")
+                response = simulator.generate_response(prompt)
+                
+                await websocket.send_json({
+                    "type": "generated_response",
+                    "content": response,
+                })
+            
+            elif action_type == "parse_action":
+                # Parse natural language action
+                user_input = data.get("user_input", "")
+                parsed = simulator.parse_natural_language_action(user_input)
+                
+                await websocket.send_json({
+                    "type": "parsed_action",
+                    "action": parsed,
+                })
+    
+    except WebSocketDisconnect:
+        ws_manager.disconnect(session_id)
+    except Exception as e:
+        await websocket.send_json({
+            "type": "error",
+            "message": str(e),
+        })
+        ws_manager.disconnect(session_id)
 
 
 # =============================================================================
