@@ -109,8 +109,15 @@ class RollbackRequest(BaseModel):
 
 
 class RegenerateUserRequest(BaseModel):
-    """Request to regenerate user (simulated user agent) response with additional note."""
-    additional_note: Optional[str] = None  # Additional guidance for the user agent
+    """Request to regenerate user (simulated user agent) response with feedback."""
+    rejected_message: Optional[str] = None  # The rejected user message content
+    feedback: Optional[str] = None  # User feedback on what should be different
+
+
+class RegenerateActionRequest(BaseModel):
+    """Request to regenerate agent action with feedback on rejected action."""
+    rejected_action: Dict[str, Any]  # The rejected action (action_type, content, tool_name, arguments, reasoning)
+    feedback: Optional[str] = None  # User feedback on why the action was rejected
 
 
 class ActionResultResponse(BaseModel):
@@ -844,12 +851,34 @@ async def rollback_to_point(session_id: str, request: RollbackRequest):
 
 @app.post("/sessions/{session_id}/regenerate-user")
 async def regenerate_user_response(session_id: str, request: RegenerateUserRequest):
-    """Regenerate the simulated user's response with optional additional guidance."""
+    """Regenerate the simulated user's response with feedback on rejected message."""
     simulator = session_manager.get_session(session_id)
     if not simulator:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    result = simulator.regenerate_user_response(request.additional_note)
+    result = simulator.regenerate_user_response(
+        rejected_message=request.rejected_message,
+        feedback=request.feedback
+    )
+    return result
+
+
+@app.post("/sessions/{session_id}/regenerate-action")
+async def regenerate_action(session_id: str, request: RegenerateActionRequest):
+    """Regenerate agent action with feedback on a rejected action."""
+    simulator = session_manager.get_session(session_id)
+    if not simulator:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    result = simulator.regenerate_action_with_feedback(
+        rejected_action=request.rejected_action,
+        feedback=request.feedback
+    )
+    if result is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not regenerate action. Check server logs for details."
+        )
     return result
 
 
@@ -1401,11 +1430,14 @@ async def trajectory_rollback(trajectory_id: str, request: RollbackRequest):
 @app.post("/trajectories/{trajectory_id}/regenerate-user")
 async def trajectory_regenerate_user(trajectory_id: str, request: RegenerateUserRequest):
     """
-    Regenerate the last user response with optional additional guidance.
+    Regenerate the last user response with feedback on rejected message.
     """
     try:
         simulator = get_simulator_for_trajectory(trajectory_id)
-        new_response = simulator.regenerate_user_response(request.additional_note)
+        new_response = simulator.regenerate_user_response(
+            rejected_message=request.rejected_message,
+            feedback=request.feedback
+        )
         
         return {
             "success": True,
@@ -2000,13 +2032,25 @@ def _convert_to_grpo_format(trajectories: List[Dict[str, Any]]) -> List[Dict[str
                 "unknown_info": "..."
             }
         },
-        "initial_state": null,
+        "db": {
+            "users": { "user_id": {...} },      # User profile data
+            "orders": { "#W123": {...} },       # Orders/reservations from scenario
+            "products": { "prod_id": {...} }   # Augmented data (products, etc.)
+        },
         "evaluation_criteria": {
             "actions": [...],  # Ground truth: actual tool calls from trajectory
             "communicate_info": [...],
             "nl_assertions": null
         }
     }
+    
+    The 'db' field contains the custom DB data from persona_data including:
+    - User profile data injected during scenario simulation
+    - Orders/reservations created for the scenario
+    - Augmented data (products, flights, etc.) that were injected into DB
+    
+    This tells the simulator what to insert into its database before starting simulations,
+    allowing the GRPO learning system to correctly mock database responses.
     
     The 'actions' in evaluation_criteria is the ground truth sequence of tool calls
     that actually happened during the trajectory.
@@ -2097,6 +2141,36 @@ def _convert_to_grpo_format(trajectories: List[Dict[str, Any]]) -> List[Dict[str
             outputs = reward_info.get('outputs', {})
             communicate_info = list(outputs.keys()) if isinstance(outputs, dict) else []
         
+        # Build db data from persona_data for GRPO training
+        # This includes user profile, orders/reservations, and augmented_data (products, etc.)
+        # so the simulator can insert this data before starting simulations
+        db_data = None
+        if persona_data:
+            db_data = {}
+            
+            # Include user profile data
+            if 'user' in persona_data:
+                db_data['users'] = {
+                    persona_data['user'].get('user_id', user_id): persona_data['user']
+                }
+            
+            # Include orders/reservations data (based on data_key from scenario)
+            # Common data keys: "orders", "reservations", etc.
+            for data_key in ['orders', 'reservations', 'bookings', 'tickets']:
+                if data_key in persona_data and persona_data[data_key]:
+                    db_data[data_key] = persona_data[data_key]
+            
+            # Include augmented_data (products, flights, etc. that were injected into DB)
+            augmented_data = persona_data.get('augmented_data', {})
+            if augmented_data:
+                for collection_name, collection_data in augmented_data.items():
+                    if collection_data:
+                        db_data[collection_name] = collection_data
+            
+            # Only set db_data if we have data
+            if not db_data:
+                db_data = None
+        
         # Create GRPO record matching tasks.json format
         record_id = str(len(grpo_records))
         grpo_record = {
@@ -2116,7 +2190,7 @@ def _convert_to_grpo_format(trajectories: List[Dict[str, Any]]) -> List[Dict[str
                     "unknown_info": unknown_info
                 }
             },
-            "initial_state": None,
+            "db": db_data,  # Data to insert into simulator DB before starting
             "evaluation_criteria": {
                 "actions": actions,  # Ground truth: actual tool calls from trajectory
                 "communicate_info": communicate_info,

@@ -15,7 +15,144 @@
       "unknown_info": "You do not remember your email address."
     }
   },
-  "initial_state": null,
+  "initial_state": {
+    "users": {
+      "evelyn_taylor_9534": {
+        "user_id": "evelyn_taylor_9534",
+        "name": { "first_name": "Evelyn", "last_name": "Taylor" },
+        "address": {
+          "address1": "1198 Meadowview Ct",
+          "address2": "Apt 4B",
+          "city": "Brownsburg",
+          "country": "USA",
+          "state": "IN",
+          "zip": "46162"
+        },
+        "email": "evelyn.taylor9534@example.com",
+        "payment_methods": {
+          "credit_card_5922792": {
+            "source": "credit_card",
+            "id": "credit_card_5922792",
+            "brand": "visa",
+            "last_four": "2638"
+          }
+        },
+        "orders": ["#W9182046"]
+      }
+    },
+    "orders": {
+      "#W9182046": {
+        "order_id": "#W9182046",
+        "user_id": "evelyn_taylor_9534",
+        "address": {
+          "address1": "1198 Meadowview Ct",
+          "address2": "Apt 4B",
+          "city": "Brownsburg",
+          "country": "USA",
+          "state": "IN",
+          "zip": "46162"
+        },
+        "items": [
+          {
+            "name": "Wireless Earbuds",
+            "product_id": "9924732112",
+            "item_id": "9580569596",
+            "price": 257.38,
+            "options": {
+              "color": "black",
+              "battery life": "4 hours",
+              "water resistance": "IPX7"
+            }
+          },
+          {
+            "name": "Wireless Earbuds",
+            "product_id": "9924732112",
+            "item_id": "6077640618",
+            "price": 242.92,
+            "options": {
+              "color": "blue",
+              "battery life": "8 hours",
+              "water resistance": "not resistant"
+            }
+          },
+          {
+            "name": "Electric Kettle",
+            "product_id": "1075968781",
+            "item_id": "5428723833",
+            "price": 145.48,
+            "options": {
+              "capacity": "1.5L",
+              "material": "plastic",
+              "color": "black"
+            }
+          }
+        ],
+        "status": "pending",
+        "fulfillments": [],
+        "payment_history": [
+          {
+            "transaction_type": "payment",
+            "amount": 645.78,
+            "payment_method_id": "credit_card_5922792"
+          }
+        ]
+      }
+    },
+    "products": {
+      "9924732112": {
+        "name": "Wireless Earbuds",
+        "product_id": "9924732112",
+        "variants": {
+          "9580569596": {
+            "item_id": "9580569596",
+            "options": {
+              "color": "black",
+              "battery life": "4 hours",
+              "water resistance": "IPX7"
+            },
+            "available": true,
+            "price": 257.38
+          },
+          "6077640618": {
+            "item_id": "6077640618",
+            "options": {
+              "color": "blue",
+              "battery life": "8 hours",
+              "water resistance": "not resistant"
+            },
+            "available": true,
+            "price": 242.92
+          },
+          "8555936349": {
+            "item_id": "8555936349",
+            "options": {
+              "color": "blue",
+              "battery life": "8 hours",
+              "water resistance": "IPX4"
+            },
+            "available": true,
+            "price": 226.49
+          }
+        }
+      },
+      "1075968781": {
+        "name": "Electric Kettle",
+        "product_id": "1075968781",
+        "variants": {
+          "5428723833": {
+            "item_id": "5428723833",
+            "options": {
+              "capacity": "1.5L",
+              "material": "plastic",
+              "color": "black"
+            },
+            "available": true,
+            "price": 145.48
+          }
+        }
+      }
+    }
+  },
   "evaluation_criteria": {
     "actions": [
       {
