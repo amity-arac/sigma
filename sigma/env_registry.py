@@ -36,12 +36,6 @@ class EnvironmentConfig:
     display_name: str
     description: str
     
-    # Data schema examples (for persona generation)
-    user_schema: str
-    order_schema: str  # Generic name - could be orders, reservations, etc.
-    order_key: str  # Key name in data dict: "orders", "reservations", etc.
-    additional_context: str  # Products info, airports, etc.
-    
     # Environment class loader
     env_class_loader: Callable[[], Type]
     
@@ -56,25 +50,6 @@ class EnvironmentConfig:
     
     # Scenario examples for persona creator UI
     scenario_examples: List[str] = field(default_factory=list)
-    
-    @property
-    def data_key(self) -> str:
-        """Alias for order_key for clarity."""
-        return self.order_key
-    
-    @property
-    def persona_schemas(self) -> str:
-        """Get combined schema context for persona generation."""
-        return f"""
-# User Schema
-{self.user_schema}
-
-# {self.order_key.title()} Schema
-{self.order_schema}
-
-# Additional Context
-{self.additional_context}
-"""
 
 
 # Global registry
@@ -105,205 +80,14 @@ def get_all_environment_configs() -> Dict[str, EnvironmentConfig]:
 
 
 # =============================================================================
-# Schema Templates
-# =============================================================================
-
-RETAIL_USER_SCHEMA = """
-{
-    "user_id": "firstname_lastname_1234",
-    "name": { "first_name": "John", "last_name": "Doe" },
-    "address": {
-        "address1": "123 Main Street",
-        "address2": "Apt 4B",
-        "city": "New York",
-        "country": "USA",
-        "state": "NY",
-        "zip": "10001"
-    },
-    "email": "john.doe1234@example.com",
-    "payment_methods": {
-        "credit_card_1234567": {
-            "source": "credit_card",
-            "brand": "visa",
-            "last_four": "1234",
-            "id": "credit_card_1234567"
-        },
-        "gift_card_7654321": {
-            "source": "gift_card",
-            "balance": 150.00,
-            "id": "gift_card_7654321"
-        },
-        "paypal_9876543": {
-            "source": "paypal",
-            "id": "paypal_9876543"
-        }
-    },
-    "orders": ["#W1234567", "#W7654321"]
-}
-"""
-
-RETAIL_ORDER_SCHEMA = """
-{
-    "order_id": "#W1234567",
-    "user_id": "john_doe_1234",
-    "address": {
-        "address1": "123 Main Street",
-        "address2": "Apt 4B",
-        "city": "New York",
-        "country": "USA",
-        "state": "NY",
-        "zip": "10001"
-    },
-    "items": [
-        {
-            "name": "T-Shirt",
-            "product_id": "9523456873",
-            "item_id": "1234567890",
-            "price": 49.99,
-            "options": {
-                "color": "blue",
-                "size": "M",
-                "material": "cotton",
-                "style": "crew neck"
-            }
-        }
-    ],
-    "fulfillments": [
-        {
-            "tracking_id": ["123456789012"],
-            "item_ids": ["1234567890"]
-        }
-    ],
-    "status": "delivered",
-    "payment_history": [
-        {
-            "transaction_type": "payment",
-            "amount": 49.99,
-            "payment_method_id": "credit_card_1234567"
-        }
-    ]
-}
-
-Status can be: pending, processed, delivered, cancelled
-"""
-
-RETAIL_PRODUCTS_INFO = """
-Available product types:
-- T-Shirt (options: color, size, material, style)
-- Jeans (options: color, size, fit, material)  
-- Sneakers (options: color, size, material)
-- Backpack (options: color, size, material, compartments)
-- Water Bottle (options: capacity, material, color)
-- Office Chair (options: material, color, armrest, backrest height)
-- Laptop (options: brand, screen size, processor, RAM, storage)
-- Headphones (options: type, connectivity, color)
-- Smart Watch (options: brand, color, band material, screen size)
-- Electric Kettle (options: capacity, material, color)
-- Mechanical Keyboard (options: switch type, backlight, size)
-- Smart Thermostat (options: compatibility, color)
-- Action Camera (options: resolution, waterproof, color)
-- Bookshelf (options: material, color, height)
-- Desk Lamp (options: color, brightness, power source)
-"""
-
-AIRLINE_USER_SCHEMA = """
-{
-    "user_id": "firstname_lastname_1234",
-    "name": { "first_name": "John", "last_name": "Doe" },
-    "address": {
-        "address1": "123 Main Street",
-        "address2": "Apt 4B",
-        "city": "New York",
-        "country": "USA",
-        "state": "NY",
-        "zip": "10001"
-    },
-    "email": "john.doe1234@example.com",
-    "dob": "1985-06-15",
-    "payment_methods": {
-        "credit_card_1234567": {
-            "source": "credit_card",
-            "brand": "visa",
-            "last_four": "1234",
-            "id": "credit_card_1234567"
-        },
-        "gift_card_7654321": {
-            "source": "gift_card",
-            "amount": 500,
-            "id": "gift_card_7654321"
-        },
-        "certificate_9876543": {
-            "source": "certificate",
-            "amount": 250,
-            "id": "certificate_9876543"
-        }
-    },
-    "saved_passengers": [
-        { "first_name": "Jane", "last_name": "Doe", "dob": "1987-03-20" }
-    ],
-    "membership": "gold",
-    "reservations": ["ABC123", "XYZ789"]
-}
-
-Membership can be: regular, silver, gold
-"""
-
-AIRLINE_RESERVATION_SCHEMA = """
-{
-    "reservation_id": "ABC123",
-    "user_id": "john_doe_1234",
-    "origin": "JFK",
-    "destination": "LAX",
-    "flight_type": "round_trip",
-    "cabin": "economy",
-    "flights": [
-        {
-            "origin": "JFK",
-            "destination": "LAX",
-            "flight_number": "HAT100",
-            "date": "2024-05-20",
-            "price": 350
-        },
-        {
-            "origin": "LAX",
-            "destination": "JFK",
-            "flight_number": "HAT101",
-            "date": "2024-05-25",
-            "price": 380
-        }
-    ],
-    "passengers": [
-        { "first_name": "John", "last_name": "Doe", "dob": "1985-06-15" }
-    ],
-    "payment_history": [
-        { "payment_id": "credit_card_1234567", "amount": 730 }
-    ],
-    "created_at": "2024-05-01T10:30:00",
-    "total_baggages": 2,
-    "nonfree_baggages": 1,
-    "insurance": "yes"
-}
-
-flight_type can be: one_way, round_trip
-cabin can be: basic_economy, economy, business
-insurance can be: yes, no
-"""
-
-AIRLINE_AIRPORTS = """
-Available airports: JFK, LAX, ORD, DFW, DEN, SFO, SEA, ATL, BOS, MIA, 
-PHX, IAH, LAS, MCO, EWR, MSP, DTW, PHL, LGA, CLT
-
-The current simulation date is 2024-05-15.
-"""
-
-
-# =============================================================================
 # Auto-Detection of Environments
 # =============================================================================
 
 def _is_valid_environment(env_path: str) -> bool:
     """Check if a folder contains a valid environment (has required files)."""
-    required_files = ["db.json", "tasks.json", "policy.md"]
+    # Only db.json and tasks.json are strictly required
+    # policy.md is optional (will use default description if not present)
+    required_files = ["db.json", "tasks.json"]
     return all(
         os.path.exists(os.path.join(env_path, f))
         for f in required_files
@@ -387,20 +171,10 @@ def _auto_register_environments():
     detected = _detect_environments()
     
     for env_name in detected:
-        # Use retail schemas as default (can be customized per env later)
-        user_schema = RETAIL_USER_SCHEMA
-        order_schema = RETAIL_ORDER_SCHEMA
-        order_key = "orders"
-        additional_context = RETAIL_PRODUCTS_INFO
-        
         config = EnvironmentConfig(
             name=env_name,
             display_name=env_name.title(),
             description=_get_env_description(env_name),
-            user_schema=user_schema,
-            order_schema=order_schema,
-            order_key=order_key,
-            additional_context=additional_context,
             env_class_loader=_create_env_class_loader(env_name),
             data_loader=_create_env_data_loader(env_name),
             task_splits=_get_task_splits(env_name),
@@ -410,6 +184,16 @@ def _auto_register_environments():
         register_environment(config)
     
     return detected
+
+
+def refresh_environment_registry():
+    """
+    Refresh the environment registry by re-detecting all environments.
+    Call this after adding, removing, or renaming environments.
+    """
+    global _ENVIRONMENT_REGISTRY
+    _ENVIRONMENT_REGISTRY.clear()
+    return _auto_register_environments()
 
 
 # Auto-register environments on module load
@@ -434,12 +218,12 @@ def create_sigma_environment(env_name: str, output_dir: str = None):
     
     Args:
         env_name: Name for the new environment
-        output_dir: Directory to create env in (default: sigma/envs/)
+        output_dir: Directory to create env in (default: data/envs/)
     """
     import os
     
     if output_dir is None:
-        output_dir = os.path.join(os.path.dirname(__file__), "envs")
+        output_dir = DATA_ENVS_PATH
     
     env_dir = os.path.join(output_dir, env_name)
     os.makedirs(env_dir, exist_ok=True)

@@ -291,3 +291,932 @@
     padding: 4px 10px;
   }
 }
+
+/* Optimized Policy Modal */
+.policy-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  animation: fadeIn 0.2s ease;
+}
+
+.policy-modal {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  width: 95vw;
+  max-width: 1400px;
+  height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+/* Full-width modal for better diff viewing */
+.policy-modal-fullwidth {
+  max-width: 98vw;
+  width: 98vw;
+}
+
+.policy-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-tertiary);
+}
+
+.policy-modal-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text);
+}
+
+.policy-modal-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.policy-modal-close:hover {
+  background: var(--bg-secondary);
+  color: var(--text);
+}
+
+/* Split layout: compact analysis on left, diff on right */
+.policy-modal-content-split {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Compact Analysis Panel */
+.policy-analysis-compact {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+
+.policy-stats-compact {
+  display: flex;
+  padding: 12px;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.stat-compact {
+  flex: 1;
+  text-align: center;
+  padding: 8px 4px;
+  background: var(--bg);
+  border-radius: 6px;
+}
+
+.stat-num {
+  display: block;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--primary);
+  line-height: 1;
+}
+
+.stat-lbl {
+  display: block;
+  font-size: 0.65rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+.policy-analysis-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.policy-section-compact {
+  margin-bottom: 16px;
+}
+
+.policy-section-compact h4 {
+  margin: 0 0 8px 0;
+  font-size: 0.8rem;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.item-compact {
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+}
+
+.item-title {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.item-desc {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.item-meta {
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-style: italic;
+  margin-top: 4px;
+}
+
+.change-compact {
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+}
+
+.change-header-compact {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+  gap: 8px;
+}
+
+.change-section-compact {
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.change-badge {
+  font-size: 0.6rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.change-badge-add {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4CAF50;
+}
+
+.change-badge-modify {
+  background: rgba(255, 193, 7, 0.2);
+  color: #FFC107;
+}
+
+.change-badge-clarify {
+  background: rgba(33, 150, 243, 0.2);
+  color: #2196F3;
+}
+
+.change-badge-remove {
+  background: rgba(244, 67, 54, 0.2);
+  color: #F44336;
+}
+
+.change-badge-reorganize {
+  background: rgba(156, 39, 176, 0.2);
+  color: #9C27B0;
+}
+
+/* Diff Panel (takes most space) */
+.policy-diff-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.policy-diff-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+}
+
+.policy-diff-viewer {
+  flex: 1;
+  overflow: auto;
+  background: var(--bg);
+}
+
+/* Legacy support */
+.policy-modal-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.policy-modal-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  flex: 1;
+  overflow: hidden;
+}
+
+.policy-analysis-fullwidth {
+  padding: 24px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.policy-analysis-fullwidth .policy-stats {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.policy-analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 24px;
+}
+
+.policy-section-wide {
+  grid-column: 1 / -1;
+}
+
+.changes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 12px;
+}
+
+/* Full-width Diff Tab */
+.policy-diff-fullwidth {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.policy-diff-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.policy-diff-viewer {
+  flex: 1;
+  overflow: auto;
+  background: var(--bg);
+}
+
+/* Left Panel - Analysis (legacy) */
+.policy-analysis-panel {
+  padding: 20px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+}
+
+.policy-stats {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.policy-stat {
+  flex: 1;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+}
+
+.policy-stat .stat-value {
+  display: block;
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.policy-stat .stat-label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+}
+
+.policy-section {
+  margin-bottom: 24px;
+}
+
+.policy-section h3 {
+  font-size: 1rem;
+  color: var(--text);
+  margin: 0 0 12px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pattern-item,
+.cause-item,
+.change-item {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.pattern-name,
+.cause-name {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.pattern-description,
+.change-description {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-bottom: 6px;
+}
+
+.pattern-frequency,
+.cause-affects {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.change-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.change-section {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.change-type {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.change-type-add {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4CAF50;
+}
+
+.change-type-modify {
+  background: rgba(255, 193, 7, 0.2);
+  color: #FFC107;
+}
+
+.change-type-clarify {
+  background: rgba(33, 150, 243, 0.2);
+  color: #2196F3;
+}
+
+.change-rationale {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+/* Right Panel - Optimized Policy */
+.policy-result-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.policy-result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-tertiary);
+}
+
+.policy-result-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.policy-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.view-mode-selector {
+  display: flex;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.view-mode-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.view-mode-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text);
+}
+
+.view-mode-btn.active {
+  background: var(--primary);
+  color: var(--darker);
+}
+
+.view-mode-btn:not(:last-child) {
+  border-right: 1px solid var(--border);
+}
+
+.diff-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.diff-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.diff-toggle-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* Toolbar actions container */
+.policy-toolbar-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.copy-policy-button {
+  background: var(--primary);
+  border: none;
+  border-radius: 6px;
+  color: var(--darker);
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.copy-policy-button:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+.copy-policy-button.copied {
+  background: #4CAF50;
+  color: white;
+}
+
+/* Update policy button */
+.update-policy-button {
+  background: #2196F3;
+  border: none;
+  border-radius: 6px;
+  color: white;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.update-policy-button:hover:not(:disabled) {
+  background: #1976D2;
+  transform: translateY(-1px);
+}
+
+.update-policy-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.update-policy-button.success {
+  background: #4CAF50;
+}
+
+/* Confirmation dialog */
+.confirm-dialog-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  border-radius: 12px;
+}
+
+.confirm-dialog {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.confirm-dialog h3 {
+  margin: 0 0 16px 0;
+  font-size: 1.2rem;
+  color: var(--text);
+}
+
+.confirm-dialog p {
+  margin: 0 0 12px 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.confirm-dialog code {
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 0.85rem;
+  color: var(--primary);
+}
+
+.confirm-dialog strong {
+  color: var(--text);
+}
+
+.confirm-warning {
+  color: #FFC107 !important;
+  font-weight: 500;
+  margin-top: 16px !important;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.confirm-cancel-btn {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 10px 20px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+.confirm-cancel-btn:hover {
+  background: var(--bg);
+  border-color: var(--muted);
+}
+
+.confirm-update-btn {
+  background: #2196F3;
+  border: none;
+  border-radius: 6px;
+  color: white;
+  padding: 10px 20px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.confirm-update-btn:hover:not(:disabled) {
+  background: #1976D2;
+}
+
+.confirm-update-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* Diff viewer content area */
+.policy-diff-content {
+  flex: 1;
+  overflow: auto;
+  background: var(--bg);
+}
+
+/* Override react-diff-viewer styles for better integration */
+.policy-diff-content [class*="diff-viewer"] {
+  font-size: 13px !important;
+}
+
+.policy-diff-content table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.policy-diff-content pre {
+  margin: 0;
+  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+}
+
+/* Final view (no diff) */
+.policy-final-view {
+  margin: 0;
+  padding: 20px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+/* Legacy policy-content for backwards compatibility */
+.policy-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  background: var(--bg);
+}
+
+.policy-content pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+/* Responsive Policy Modal */
+@media (max-width: 1024px) {
+  .policy-modal-content {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+  
+  .policy-modal-content-split {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  
+  .policy-analysis-panel {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  
+  .policy-analysis-compact {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-height: 35vh;
+  }
+  
+  .view-mode-selector {
+    order: -1;
+  }
+  
+  .policy-analysis-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .changes-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .policy-stats-compact {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  
+  .stat-compact {
+    flex: 1;
+    min-width: 60px;
+  }
+}
+
+@media (max-width: 768px) {
+  .policy-modal,
+  .policy-modal-fullwidth {
+    width: 100vw;
+    height: 100vh;
+    max-width: 100vw;
+    border-radius: 0;
+  }
+  
+  .policy-modal-overlay {
+    padding: 0;
+  }
+  
+  .policy-modal-header {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+  }
+  
+  .policy-modal-header h2 {
+    font-size: 1rem;
+    width: 100%;
+    margin-bottom: 8px;
+  }
+  
+  .policy-modal-tabs {
+    width: 100%;
+    order: 2;
+  }
+  
+  .policy-tab {
+    flex: 1;
+    text-align: center;
+    padding: 8px 12px;
+    font-size: 0.8rem;
+  }
+  
+  .policy-modal-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+  }
+  
+  .policy-stats {
+    flex-direction: row;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  
+  .policy-stat {
+    flex: 1;
+    min-width: 90px;
+    padding: 12px 8px;
+  }
+  
+  .policy-stat .stat-value {
+    font-size: 1.3rem;
+  }
+  
+  .policy-stat .stat-label {
+    font-size: 0.65rem;
+  }
+  
+  .policy-analysis-fullwidth {
+    padding: 16px;
+  }
+  
+  .policy-analysis-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .policy-diff-toolbar {
+    padding: 10px 16px;
+  }
+  
+  .view-mode-btn {
+    padding: 6px 10px;
+    font-size: 0.75rem;
+  }
+  
+  .copy-policy-button {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+  }
+  
+  /* Compact analysis panel mobile adjustments */
+  .policy-analysis-compact {
+    max-height: 40vh;
+    padding: 12px;
+  }
+  
+  .policy-stats-compact {
+    gap: 6px;
+  }
+  
+  .stat-compact {
+    padding: 6px 8px;
+  }
+  
+  .stat-compact .stat-value {
+    font-size: 1rem;
+  }
+  
+  .stat-compact .stat-label {
+    font-size: 0.55rem;
+  }
+  
+  .section-compact h4 {
+    font-size: 0.7rem;
+  }
+  
+  .item-compact,
+  .change-compact {
+    font-size: 0.7rem;
+    padding: 4px 6px;
+  }
+}
+
+/* Change item original/new text styling */
+.change-original,
+.change-new {
+  margin-top: 6px;
+  font-size: 0.85rem;
+  padding: 6px 10px;
+  border-radius: 4px;
+}
+
+.change-original {
+  background: rgba(244, 67, 54, 0.1);
+  border-left: 3px solid #F44336;
+}
+
+.change-new {
+  background: rgba(76, 175, 80, 0.1);
+  border-left: 3px solid #4CAF50;
+}
+
+.change-text-removed {
+  color: #f48c85;
+}
+
+.change-text-added {
+  color: #7be082;
+}
+
+/* Additional change types */
+.change-type-remove {
+  background: rgba(244, 67, 54, 0.2);
+  color: #F44336;
+}
+
+.change-type-reorganize {
+  background: rgba(156, 39, 176, 0.2);
+  color: #9C27B0;
+}

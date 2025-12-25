@@ -29,6 +29,15 @@
   animation: dots 1.5s steps(4, end) infinite;
 }
 
+/* Policy check variant - purple/violet color */
+.loading-message.policy-check {
+  border-left-color: #9c27b0;
+}
+
+.loading-message.policy-check .loading-spinner {
+  border-top-color: #9c27b0;
+}
+
 /* Mobile-friendly loading indicator */
 @media (max-width: 768px) {
   .loading-message {

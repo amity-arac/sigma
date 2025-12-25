@@ -1,9 +1,121 @@
 .side-panel {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  height: calc(100vh - 100px);
+  min-height: 600px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  overflow: hidden;
 }
 
+/* Tab Navigation */
+.side-panel-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 8px 0;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.side-panel-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.side-panel-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  border-radius: 8px 8px 0 0;
+  color: var(--muted);
+  font-size: 0.82em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  position: relative;
+}
+
+.side-panel-tab:hover {
+  background: var(--bg-secondary);
+  color: var(--text);
+}
+
+.side-panel-tab.active {
+  background: var(--bg-secondary);
+  color: var(--text);
+}
+
+.side-panel-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--primary);
+}
+
+.side-panel-tab .tab-icon {
+  font-size: 1em;
+}
+
+.side-panel-tab .tab-label {
+  display: none;
+}
+
+@media (min-width: 1400px) {
+  .side-panel-tab .tab-label {
+    display: inline;
+  }
+}
+
+/* Tab Content */
+.side-panel-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tab-content-inner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.tab-content-scrollable {
+  overflow-y: auto;
+  padding: 16px;
+}
+
+/* Full-height displays for persona and wiki */
+.persona-display-full {
+  background: var(--bg-primary);
+  padding: 16px;
+  border-radius: 8px;
+  font-size: 0.9em;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.wiki-content-full {
+  background: var(--bg-primary);
+  padding: 16px;
+  border-radius: 8px;
+  font-size: 0.85em;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* Legacy styles for compatibility */
 .persona-display {
   background: var(--bg-primary);
   padding: 12px;
@@ -30,7 +142,8 @@
 .desktop-policy-qa-standalone {
   display: flex;
   flex-direction: column;
-  max-height: 450px;
+  flex: 1;
+  min-height: 0;
 }
 
 .desktop-policy-qa {
@@ -96,7 +209,8 @@
 .policy-qa-body {
   display: flex;
   flex-direction: column;
-  max-height: 400px;
+  flex: 1;
+  min-height: 0;
 }
 
 .policy-qa-conversation-desktop {
@@ -106,7 +220,6 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: 280px;
   min-height: 100px;
 }
 

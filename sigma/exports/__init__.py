@@ -6,6 +6,7 @@ This module provides converters for various training data formats:
 - DPO (Direct Preference Optimization)
 - GRPO (Group Relative Policy Optimization)  
 - SFT (Supervised Fine-Tuning)
+- Optimized Policy (AI-generated policy improvements based on rejections)
 
 Usage:
     from sigma.exports import convert_trajectories, ExportTrajectoryRequest, ExportTrajectoryResponse
@@ -18,6 +19,7 @@ from .models import ExportTrajectoryRequest, ExportTrajectoryResponse
 from .dpo import convert_to_dpo_format
 from .grpo import convert_to_grpo_format
 from .sft import convert_to_sft_format
+from .optimized_policy import convert_to_optimized_policy_format
 
 __all__ = [
     # Models
@@ -29,6 +31,7 @@ __all__ = [
     "convert_to_dpo_format",
     "convert_to_grpo_format", 
     "convert_to_sft_format",
+    "convert_to_optimized_policy_format",
 ]
 
 
@@ -37,6 +40,7 @@ EXPORT_FORMATS = {
     "dpo": convert_to_dpo_format,
     "grpo": convert_to_grpo_format,
     "sft": convert_to_sft_format,
+    "optimized_policy": convert_to_optimized_policy_format,
 }
 
 

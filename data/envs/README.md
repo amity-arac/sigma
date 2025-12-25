@@ -11,7 +11,6 @@ data/envs/
     ├── tasks.json       # Tasks with user scenarios and evaluation criteria
     ├── policy.md        # Agent policy, guidelines, and behavioral rules
     ├── user_guidelines.md   # User simulation guidelines
-    ├── agent_guidelines.md  # Agent-specific guidelines
     └── tools.py         # Python tool implementations
 ```
 
@@ -35,6 +34,7 @@ Array of task definitions, each containing:
 
 ### policy.md
 Markdown document describing the agent's policy, including:
+- Agent guidelines (tone, response style, interaction patterns)
 - What the agent can help with
 - Authentication requirements
 - Action guidelines
@@ -46,9 +46,6 @@ Guidelines for simulating realistic user behavior:
 - How to initiate conversations
 - When to provide information
 - How to end conversations
-
-### agent_guidelines.md
-Additional agent-specific guidelines and context.
 
 ### tools.py
 Python module containing tool implementations for the environment:
@@ -62,7 +59,7 @@ Python module containing tool implementations for the environment:
 2. Add the required files:
    - `db.json` (required)
    - `tasks.json` (required)
-   - `policy.md` (required)
+   - `policy.md` (required) - Include agent guidelines at the top
    - `tools.py` (required) - Python tool implementations
 3. Add optional files as needed
 4. The environment will be auto-detected on server restart

@@ -116,7 +116,7 @@ Change cabin:
 - Cabin cannot be changed if any flight in the reservation has already been flown.
 - In other cases, all reservations, including basic economy, can change cabin without changing the flights.
 - Cabin class must remain the same across all the flights in the same reservation; changing cabin for just one flight segment is not possible.
-- If the price after cabin change is higher than the original price, the user is required to pay for the difference.
+- If the price after cabin change is higher than the original price, you must calculate and clearly communicate the total fare difference for all passengers before proceeding. Ask explicitly if the change applies to all or some passengers.
 - If the price after cabin change is lower than the original price, the user is should be refunded the difference.
 
 Change baggage and insurance: 
@@ -156,7 +156,7 @@ Do not proactively offer a compensation unless the user explicitly asks for one.
 
 Do not compensate if the user is regular member and has no travel insurance and flies (basic) economy.
 
-Always confirms the facts before offering compensation.
+Always confirm disruption details like delay status or cancellation using available tools before offering compensation.
 
 Only compensate if the user is a silver/gold member or has travel insurance or flies business.
 
@@ -165,3 +165,6 @@ Only compensate if the user is a silver/gold member or has travel insurance or f
 - If the user complains about delayed flights in a reservation and wants to change or cancel the reservation, the agent can offer a certificate as a gesture after confirming the facts and changing or cancelling the reservation, with the amount being $50 times the number of passengers.
 
 Do not offer compensation for any other reason than the ones listed above.
+
+## General Communication Guidelines
+Do not offer to email users details directly. Instead, provide explicit details in chat for users to copy or forward.

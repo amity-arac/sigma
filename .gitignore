@@ -1,5 +1,70 @@
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-node_modules/
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env/
+
+# Environment variables
 .env
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node.js
+node_modules/
+npm-debug.log*
+
+# React build (dist folder in react-app, we build directly to static/assets)
+sigma/static/react-app/dist/
+
+# Testing / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Type checking
+.mypy_cache/
+
+# Logs
+*.log
+logs/
+
+# Generated personas (user-created)
+sigma/personas/*.json
+!sigma/personas/README.md
+
+# Internal tooling (not for open source)
+.specify/
+.claude/
+.playwright-mcp/
+
+# Temporary / test files
+temp.json
+*.tmp
+*.bak
+
+# Jupyter
+.ipynb_checkpoints/

@@ -58,13 +58,18 @@
 }
 
 .message-action-btn.rollback-btn:hover {
-  color: var(--error);
-  border-color: var(--error);
+  color: var(--accent-blue);
+  border-color: var(--accent-blue);
 }
 
 .message-action-btn.refresh-btn:hover {
   color: var(--accent-blue);
   border-color: var(--accent-blue);
+}
+
+.message-action-btn.edit-btn:hover {
+  color: var(--accent-yellow);
+  border-color: var(--accent-yellow);
 }
 
 .reasoning-toggle {

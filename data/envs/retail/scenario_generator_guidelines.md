@@ -1,0 +1,3 @@
+- A delivered order can only be modified once and can either be to return one or more item, or exchange one or more item - but a delivered order cannot do both in the same order
+- So do NOT generate a scenario where the user want to both return and exchange multiple items in 1 order. Returning multiple items OR exchanging multiple items are ok, but not doing BOTH type of changes in the same order
+- if the scenario involves changing a default address, make sure that the current address that they user has is different from the address the user would like to change to

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useSession } from '../../context/SessionContext'
 import { generateResponse } from '../../services/api'
 import ToolsList from '../sidebar/ToolsList'
+import InjectedDataPanel from '../sidebar/InjectedDataPanel'
 import './MobileInfoPanel.css'
 
 // Helper to parse and format policy answer with highlighted citations
@@ -60,8 +61,14 @@ function MobileInfoPanel({ onNewSession }) {
     tools, 
     persona, 
     wiki,
+    injectedData,
     isAutopilotEnabled,
     setIsAutopilotEnabled,
+    isAutoApproveEnabled,
+    setIsAutoApproveEnabled,
+    autopilotTurnCount,
+    setAutopilotTurnCount,
+    AUTOPILOT_TURN_LIMIT,
     trajectoryId,
     sessionId,
     isAutoSaving,
@@ -86,6 +93,7 @@ function MobileInfoPanel({ onNewSession }) {
 
   const tabs = [
     { id: 'policyai', label: '🤖 Policy AI', icon: '🤖' },
+    ...(injectedData ? [{ id: 'data', label: '📊 Data', icon: '📊' }] : []),
     { id: 'wiki', label: '📖 Policy', icon: '📖' },
     { id: 'persona', label: '👤 Persona', icon: '👤' },
     { id: 'tools', label: '🔧 Tools', icon: '🔧' },
@@ -266,22 +274,60 @@ Be specific and cite the actual policy text. Do not paraphrase - use exact quote
             </div>
           )}
 
+          {activeTab === 'data' && (
+            <div className="info-section">
+              <InjectedDataPanel embedded />
+            </div>
+          )}
+
           {activeTab === 'settings' && (
             <div className="info-section">
               <div className="mobile-settings">
                 {/* Autopilot Toggle */}
                 <div className="mobile-setting-row">
                   <span className="setting-label">🚀 Autopilot</span>
+                  <div className="setting-controls">
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={isAutopilotEnabled}
+                        onChange={(e) => {
+                          setIsAutopilotEnabled(e.target.checked)
+                          if (e.target.checked) {
+                            setAutopilotTurnCount(0)
+                          }
+                        }}
+                      />
+                      <span className="toggle-slider"></span>
+                    </label>
+                    {isAutopilotEnabled && (
+                      <span className={`turn-counter-mobile ${autopilotTurnCount >= AUTOPILOT_TURN_LIMIT * 0.8 ? 'warning' : ''}`}>
+                        {autopilotTurnCount}/{AUTOPILOT_TURN_LIMIT}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p className="setting-hint">Auto-triggers action after each user/tool response</p>
+
+                {/* Auto-Approve Toggle */}
+                <div className={`mobile-setting-row ${!isAutopilotEnabled ? 'disabled' : ''}`}>
+                  <span className="setting-label">🛡️ Auto-Approve</span>
                   <label className="toggle-switch">
                     <input
                       type="checkbox"
-                      checked={isAutopilotEnabled}
-                      onChange={(e) => setIsAutopilotEnabled(e.target.checked)}
+                      checked={isAutoApproveEnabled}
+                      onChange={(e) => setIsAutoApproveEnabled(e.target.checked)}
+                      disabled={!isAutopilotEnabled}
                     />
                     <span className="toggle-slider"></span>
                   </label>
                 </div>
-                <p className="setting-hint">Auto-triggers action after each user/tool response</p>
+                <p className="setting-hint">
+                  {isAutopilotEnabled 
+                    ? "Policy AI auto-approves compliant actions" 
+                    : "Enable Autopilot first to use Auto-Approve"
+                  }
+                </p>
 
                 {/* Save Status */}
                 <div className="mobile-setting-row">

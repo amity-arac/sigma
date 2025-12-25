@@ -162,11 +162,11 @@ export async function undoAction(sessionId) {
   return response.json()
 }
 
-export async function rollbackToPoint(sessionId, targetIndex) {
+export async function rollbackToPoint(sessionId, messageId) {
   const response = await fetch(`${API_BASE}/sessions/${sessionId}/rollback`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ target_index: targetIndex })
+    body: JSON.stringify({ message_id: String(messageId) })
   })
   if (!response.ok) {
     throw new Error('Failed to rollback')
@@ -212,6 +212,26 @@ export async function regenerateAction(sessionId, rejectedAction, feedback = nul
   })
   if (!response.ok) {
     throw new Error('Failed to regenerate action')
+  }
+  return response.json()
+}
+
+/**
+ * Check if a proposed agent action complies with the policy.
+ * Used by auto-approve feature to automatically approve compliant actions.
+ * 
+ * @param {string} sessionId - The session ID
+ * @param {object} action - The action to check (action_type, content, tool_name, arguments, reasoning)
+ * @returns {Promise<{approved: boolean, confidence: string, reason: string, policy_concerns: string[]}>}
+ */
+export async function checkPolicyCompliance(sessionId, action) {
+  const response = await fetch(`${API_BASE}/sessions/${sessionId}/check-policy`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action })
+  })
+  if (!response.ok) {
+    throw new Error('Failed to check policy compliance')
   }
   return response.json()
 }
@@ -324,6 +344,22 @@ export async function updateTrajectory(trajectoryId, envName, updates) {
   return response.json()
 }
 
+export async function editTrajectoryMessage(trajectoryId, messageId, newContent) {
+  const response = await fetch(`${API_BASE}/trajectories/${trajectoryId}/messages/${messageId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message_id: messageId,
+      content: newContent
+    })
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || 'Failed to edit message')
+  }
+  return response.json()
+}
+
 export async function exportTrajectories(format, envName = null, trajectoryIds = null, dateFilter = null) {
   const response = await fetch(`${API_BASE}/trajectories/export`, {
     method: 'POST',
@@ -390,6 +426,43 @@ export async function updateEnvironmentFile(envName, filename, content) {
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || 'Failed to save file')
+  }
+  return response.json()
+}
+
+export async function duplicateEnvironment(envName, newName) {
+  const response = await fetch(`${API_BASE}/environments/${envName}/duplicate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ new_name: newName })
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || 'Failed to duplicate environment')
+  }
+  return response.json()
+}
+
+export async function renameEnvironment(envName, newName) {
+  const response = await fetch(`${API_BASE}/environments/${envName}/rename`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ new_name: newName })
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || 'Failed to rename environment')
+  }
+  return response.json()
+}
+
+export async function deleteEnvironment(envName) {
+  const response = await fetch(`${API_BASE}/environments/${envName}`, {
+    method: 'DELETE'
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || 'Failed to delete environment')
   }
   return response.json()
 }

@@ -44,6 +44,10 @@ from sigma.envs.manager import (
     update_env_file,
     env_exists,
     list_available_envs,
+    validate_env_name,
+    duplicate_env,
+    rename_env,
+    delete_env,
 )
 
 
@@ -107,6 +111,10 @@ __all__ = [
     "update_env_file",
     "env_exists",
     "list_available_envs",
+    "validate_env_name",
+    "duplicate_env",
+    "rename_env",
+    "delete_env",
     # Environment factory
     "get_env",
 ]

@@ -12,15 +12,15 @@ export default defineConfig({
     }
   },
   build: {
-    // Build into parent static folder
-    outDir: 'dist',
-    emptyOutDir: false,
+    // Build directly into the static/assets folder that the backend serves
+    outDir: '../assets',
+    emptyOutDir: true,
     rollupOptions: {
       output: {
-        // Ensure assets go directly to the assets folder
-        assetFileNames: 'assets/[name]-[hash][extname]',
-        chunkFileNames: 'assets/[name]-[hash].js',
-        entryFileNames: 'assets/[name]-[hash].js',
+        // Use consistent naming without hashes for cleaner git diffs
+        assetFileNames: 'assets/[name][extname]',
+        chunkFileNames: 'assets/[name].js',
+        entryFileNames: 'assets/[name].js',
       }
     }
   }

@@ -381,9 +381,19 @@ class PersonaCreator:
             ]
     
     def _get_data_key(self) -> str:
-        """Get the key name for order/reservation data in the environment."""
-        if self.env_config and self.env_config.data_key:
-            return self.env_config.data_key
+        """Get the key name for order/reservation data in the environment.
+        
+        Detects the appropriate key by checking the environment's db.json.
+        """
+        # Try to detect from environment data
+        if self.env_config and self.env_config.data_loader:
+            try:
+                data = self.env_config.data_loader()
+                for key in ["reservations", "orders", "bookings", "tickets"]:
+                    if key in data and isinstance(data[key], dict):
+                        return key
+            except Exception:
+                pass
         
         # Fallback based on known environments
         if self.env_name == "retail":
@@ -391,7 +401,7 @@ class PersonaCreator:
         elif self.env_name == "airline":
             return "reservations"
         else:
-            return "data"
+            return "orders"
 
     def generate_persona_data(self, scenario: str) -> Dict[str, Any]:
         """Use LLM to generate persona data based on scenario."""

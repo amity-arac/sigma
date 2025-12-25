@@ -1,27 +1,40 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useSession } from '../../context/SessionContext'
 import { useToast } from '../../context/ToastContext'
-import { parseAction, sendResponse, callTool, rollbackToPoint, regenerateUserResponse, regenerateAction } from '../../services/api'
+import { parseAction, sendResponse, callTool, rollbackToPoint, regenerateUserResponse, regenerateAction, checkPolicyCompliance, editTrajectoryMessage } from '../../services/api'
 import ChatHeader from './ChatHeader'
 import StickyUserMessage from './StickyUserMessage'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import ActionSuggestion from './ActionSuggestion'
 import LoadingIndicator from './LoadingIndicator'
-import RegenerateUserDialog from '../common/RegenerateUserDialog'
+import PromptDialog from '../common/PromptDialog'
 import RegenerateActionDialog from '../common/RegenerateActionDialog'
+import EditMessageDialog from '../common/EditMessageDialog'
+import ConfirmDialog from '../common/ConfirmDialog'
 import './ChatPanel.css'
 
-function ChatPanel({ onSimulationEnd, onNewSession }) {
+function ChatPanel({ onSimulationEnd, onNewSession, wasOriginallyCompleted = false, onMarkIncomplete }) {
   const [isLoading, setIsLoading] = useState(false)
   const [loadingText, setLoadingText] = useState('')
   const [pendingAction, setPendingAction] = useState(null)
   const [inputDisabled, setInputDisabled] = useState(false)
-  const [showRegenerateUserDialog, setShowRegenerateUserDialog] = useState(false)
+  const [showRegenerateDialog, setShowRegenerateDialog] = useState(false)
   const [regenerateTargetIndex, setRegenerateTargetIndex] = useState(null)
-  const [rejectedUserMessage, setRejectedUserMessage] = useState(null)
+  const [pendingPolicyResult, setPendingPolicyResult] = useState(null)
+  const [isCheckingPolicy, setIsCheckingPolicy] = useState(false)
+  const [approvalLogs, setApprovalLogs] = useState([])
+  // New state for regenerating agent actions
   const [showRegenerateActionDialog, setShowRegenerateActionDialog] = useState(false)
-  const [rejectedActionForRegenerate, setRejectedActionForRegenerate] = useState(null)
+  const [rejectedAction, setRejectedAction] = useState(null)
+  // Flag to skip auto-approval for regenerated actions (if user had to regenerate, auto-approval already failed)
+  const [skipAutoApproval, setSkipAutoApproval] = useState(false)
+  // State for editing messages
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [editTarget, setEditTarget] = useState(null) // { index, role, content, messageId }
+  // State for completed trajectory warning
+  const [showCompletedWarning, setShowCompletedWarning] = useState(false)
+  const [pendingRegenerateAction, setPendingRegenerateAction] = useState(null) // { type: 'rollback'|'regenerateUser', index: number }
   
   const messagesEndRef = useRef(null)
   
@@ -36,7 +49,8 @@ function ChatPanel({ onSimulationEnd, onNewSession }) {
     persona,
     addRejectedSuggestion,
     setFinalResult,
-    isAutopilotEnabled
+    isAutopilotEnabled,
+    isAutoApproveEnabled
   } = useSession()
   const { showToast } = useToast()
 
@@ -104,7 +118,9 @@ function ChatPanel({ onSimulationEnd, onNewSession }) {
 
   const executeApprovedAction = useCallback(async (action) => {
     setPendingAction(null)
+    setPendingPolicyResult(null)
     setInputDisabled(false)
+    setSkipAutoApproval(false)  // Reset for next action
 
     if (action.action_type === 'respond') {
       addMessage('agent', action.content, { reasoning: action.reasoning })
@@ -128,52 +144,61 @@ function ChatPanel({ onSimulationEnd, onNewSession }) {
   }, [executeApprovedAction])
 
   const handleActionReject = useCallback(() => {
-    // Store the rejected action and show regenerate dialog
+    // Track the rejected suggestion and show the regenerate dialog
     if (pendingAction) {
-      setRejectedActionForRegenerate({
+      addRejectedSuggestion({
         action_type: pendingAction.action_type,
         content: pendingAction.content,
         tool_name: pendingAction.tool_name,
         arguments: pendingAction.arguments,
         reasoning: pendingAction.reasoning
       })
-      setPendingAction(null)  // Clear immediately so it doesn't show during regen
+      // Store the rejected action and show the regenerate dialog
+      setRejectedAction({
+        action_type: pendingAction.action_type,
+        content: pendingAction.content,
+        tool_name: pendingAction.tool_name,
+        arguments: pendingAction.arguments,
+        reasoning: pendingAction.reasoning
+      })
       setShowRegenerateActionDialog(true)
     }
-  }, [pendingAction])
+    setPendingAction(null)
+    setPendingPolicyResult(null)
+  }, [pendingAction, addRejectedSuggestion])
 
-  // Handle regenerate action with feedback
+  // Handle regenerating agent action with feedback
   const handleRegenerateActionConfirm = useCallback(async (feedback) => {
     setShowRegenerateActionDialog(false)
     
-    if (!sessionId || !rejectedActionForRegenerate) {
+    if (!sessionId || !rejectedAction) {
       setInputDisabled(false)
-      setRejectedActionForRegenerate(null)
+      setRejectedAction(null)
       return
     }
-    
-    // Don't add rejected suggestion to messages during regeneration
-    // The rejected action is already sent to the backend for context
-    
+
     showLoading('Regenerating action...')
     
     try {
-      const newAction = await regenerateAction(sessionId, rejectedActionForRegenerate, feedback)
+      const newAction = await regenerateAction(sessionId, rejectedAction, feedback)
       hideLoading()
+      // Set the new action as pending for approval
+      // Skip auto-approval since the user had to manually reject - auto-approval already failed
+      setSkipAutoApproval(true)
       setPendingAction(newAction)
-      setRejectedActionForRegenerate(null)
+      setRejectedAction(null)
     } catch (error) {
       hideLoading()
       setInputDisabled(false)
-      setRejectedActionForRegenerate(null)
+      setRejectedAction(null)
       showToast(error.message, 'error')
     }
-  }, [sessionId, rejectedActionForRegenerate, showLoading, hideLoading, showToast])
+  }, [sessionId, rejectedAction, showLoading, hideLoading, showToast])
 
   const handleRegenerateActionCancel = useCallback(() => {
     setShowRegenerateActionDialog(false)
     setInputDisabled(false)
-    setRejectedActionForRegenerate(null)
+    setRejectedAction(null)
     showToast('Action cancelled', 'info')
   }, [showToast])
 
@@ -182,6 +207,10 @@ function ChatPanel({ onSimulationEnd, onNewSession }) {
 
     setInputDisabled(true)
     showLoading('Thinking')
+    // Clear any previous policy result and reset skip flag for fresh actions
+    setPendingPolicyResult(null)
+    setIsCheckingPolicy(false)
+    setSkipAutoApproval(false)  // Reset since this is a new action, not regenerated
 
     try {
       const parsedAction = await parseAction(sessionId, message)
@@ -193,6 +222,71 @@ function ChatPanel({ onSimulationEnd, onNewSession }) {
       showToast(error.message, 'error')
     }
   }, [sessionId, isSimulationActive, showLoading, hideLoading, showToast])
+
+  // Auto-approve policy check: when a pending action is set and auto-approve is enabled
+  useEffect(() => {
+    // Skip if no pending action, auto-approve disabled, already checking, or this is a regenerated action
+    // For regenerated actions, skip auto-approval since if it could catch the issue, the user wouldn't have had to regenerate
+    if (!pendingAction || !isAutoApproveEnabled || isCheckingPolicy || pendingPolicyResult || skipAutoApproval) {
+      return
+    }
+
+    let isCancelled = false
+    
+    const checkPolicy = async () => {
+      console.log('[Auto-Approve] Starting policy check for action:', pendingAction.action_type)
+      setIsCheckingPolicy(true)
+      
+      try {
+        const result = await checkPolicyCompliance(sessionId, {
+          action_type: pendingAction.action_type,
+          content: pendingAction.content,
+          tool_name: pendingAction.tool_name,
+          arguments: pendingAction.arguments,
+          reasoning: pendingAction.reasoning
+        })
+        
+        if (isCancelled) {
+          console.log('[Auto-Approve] Policy check cancelled')
+          return
+        }
+        
+        console.log('[Auto-Approve] Policy result:', result)
+        setPendingPolicyResult(result)
+        setIsCheckingPolicy(false)
+        
+        // Log this approval check
+        setApprovalLogs(prev => [...prev, {
+          timestamp: new Date().toISOString(),
+          action: pendingAction,
+          result
+        }])
+        
+        // If approved with high confidence, auto-execute
+        if (result.approved && result.confidence === 'high') {
+          console.log('[Auto-Approve] High confidence approval - auto-executing')
+          // Use a small delay to ensure state updates have propagated
+          setTimeout(() => {
+            if (!isCancelled) {
+              executeApprovedAction(pendingAction)
+            }
+          }, 100)
+        }
+      } catch (error) {
+        console.error('[Auto-Approve] Policy check failed:', error)
+        if (!isCancelled) {
+          setIsCheckingPolicy(false)
+          // On error, just show the action without policy result
+        }
+      }
+    }
+
+    checkPolicy()
+    
+    return () => {
+      isCancelled = true
+    }
+  }, [pendingAction, isAutoApproveEnabled, sessionId, executeApprovedAction])
 
   const handleAutoGenerate = useCallback(async () => {
     const autoPrompt = "Based on the conversation history, user's request, and the policy/wiki guidelines, determine and execute the most appropriate next action. Follow the standard operating procedures."
@@ -219,68 +313,61 @@ function ChatPanel({ onSimulationEnd, onNewSession }) {
     }
   }, [messages, isAutopilotEnabled, isSimulationActive, isLoading, pendingAction, handleAutoGenerate])
 
-  // Auto-generate user response on page load if last message is from agent
-  // This handles the case where user closed page during user regeneration
-  const hasCheckedLastAgentMessage = useRef(false)
-  useEffect(() => {
-    // Only run this check once per session
-    if (hasCheckedLastAgentMessage.current) return
-    if (!sessionId || !isSimulationActive || isLoading || pendingAction) {
-      return
-    }
-    
-    const lastMessage = messages[messages.length - 1]
-    if (!lastMessage) return
-    
-    // If last message is agent (text response, not tool call), generate user response
-    if (lastMessage.role === 'agent') {
-      hasCheckedLastAgentMessage.current = true
-      const timer = setTimeout(async () => {
-        showLoading('Generating user response...')
-        try {
-          const data = await regenerateUserResponse(sessionId, null, null)
-          hideLoading()
-          if (data.success) {
-            addMessage('user', data.observation)
-          }
-        } catch (error) {
-          hideLoading()
-          showToast('Failed to generate user response: ' + error.message, 'error')
-        }
-      }, 500)
-      return () => clearTimeout(timer)
-    }
-  }, [sessionId, messages, isSimulationActive, isLoading, pendingAction, showLoading, hideLoading, addMessage, showToast])
-
-  // Handle rollback to a specific message index
+  // Handle rollback to a specific message
+  // When clicking regenerate on an agent message:
+  // 1. Rollback to that state (by message ID for idempotency)
+  // 2. Mark the message as rejected
+  // 3. Show the regeneration dialog for user to provide feedback
   const handleRollback = useCallback(async (messageIndex) => {
     if (!sessionId || messageIndex < 1) return
     
     try {
-      showLoading('Rolling back...')
+      // Capture the message being rolled back (the one we're regenerating from)
+      // This is the message at messageIndex that will be removed
+      const targetMessage = messages[messageIndex]
       
-      // Calculate the backend index by excluding rejected messages
-      // Rejected messages only exist in frontend, not in backend conversation history
-      let backendIndex = 0
-      for (let i = 0; i < messageIndex; i++) {
-        if (messages[i].role !== 'rejected') {
-          backendIndex++
-        }
+      if (!targetMessage?.id) {
+        showToast('Cannot rollback: message has no ID', 'error')
+        return
       }
       
-      // Call backend with the corrected index
-      const data = await rollbackToPoint(sessionId, backendIndex)
+      showLoading('Rolling back...')
+      // Use message_id for idempotent rollback operation
+      const data = await rollbackToPoint(sessionId, targetMessage.id)
       hideLoading()
       
       if (data.success) {
-        // Remove messages from the frontend state (including any rejected messages after this point)
+        // Remove messages from the frontend state
         setMessages(prev => prev.slice(0, messageIndex))
-        // Clear any pending action so user can regenerate
+        // Clear any pending action
         setPendingAction(null)
-        setInputDisabled(false)
+        
         if (!isSimulationActive) {
           setIsSimulationActive(true)
         }
+        
+        // Mark the message we're rolling back from as rejected and show regeneration dialog
+        if (targetMessage && (targetMessage.role === 'agent' || targetMessage.role === 'tool')) {
+          const rejectedInfo = {
+            action_type: targetMessage.role === 'tool' ? 'tool_call' : 'respond',
+            content: targetMessage.content,
+            tool_name: targetMessage.tool_name || null,
+            arguments: targetMessage.tool_arguments || null,
+            reasoning: targetMessage.reasoning || null
+          }
+          
+          // Add to rejected suggestions
+          addRejectedSuggestion(rejectedInfo)
+          
+          // Store the rejected action and show the regenerate dialog
+          setRejectedAction(rejectedInfo)
+          setSkipAutoApproval(true)  // Skip auto-approval since user explicitly rejected
+          setShowRegenerateActionDialog(true)
+        } else {
+          // If not an agent/tool message, just enable input
+          setInputDisabled(false)
+        }
+        
         showToast(`Rolled back ${data.removed_count} message(s)`, 'success')
       } else {
         showToast(data.error || 'Cannot rollback', 'error')
@@ -289,27 +376,23 @@ function ChatPanel({ onSimulationEnd, onNewSession }) {
       hideLoading()
       showToast('Failed to rollback: ' + error.message, 'error')
     }
-  }, [sessionId, messages, isSimulationActive, setMessages, setIsSimulationActive, showLoading, hideLoading, showToast])
+  }, [sessionId, messages, isSimulationActive, setMessages, setIsSimulationActive, addRejectedSuggestion, showLoading, hideLoading, showToast])
 
-  // Handle regenerate user response - opens dialog with the current message
+  // Handle regenerate user response - opens dialog for additional note
   const handleRegenerateUserClick = useCallback((messageIndex) => {
-    const targetMessage = messages[messageIndex]
-    if (targetMessage && targetMessage.role === 'user') {
-      setRejectedUserMessage(targetMessage.content)
-      setRegenerateTargetIndex(messageIndex)
-      setShowRegenerateUserDialog(true)
-    }
-  }, [messages])
+    setRegenerateTargetIndex(messageIndex)
+    setShowRegenerateDialog(true)
+  }, [])
 
-  // Execute the regenerate with rejected message + feedback
-  const handleRegenerateUserConfirm = useCallback(async (feedback) => {
-    setShowRegenerateUserDialog(false)
+  // Execute the regenerate with optional note
+  const handleRegenerateConfirm = useCallback(async (additionalNote) => {
+    setShowRegenerateDialog(false)
     
-    if (!sessionId || regenerateTargetIndex === null) {
-      setRegenerateTargetIndex(null)
-      setRejectedUserMessage(null)
-      return
-    }
+    if (!sessionId || regenerateTargetIndex === null) return
+    
+    // Get the rejected message content before rollback
+    const targetUserMessage = messages[regenerateTargetIndex]
+    const rejectedMessageContent = targetUserMessage?.content || null
     
     try {
       showLoading('Regenerating user response...')
@@ -318,22 +401,21 @@ function ChatPanel({ onSimulationEnd, onNewSession }) {
       // Find the index of the message right after the target user message
       const rollbackIndex = regenerateTargetIndex + 1
       
-      // Calculate backend index excluding rejected messages
-      let backendRollbackIndex = 0
-      for (let i = 0; i < rollbackIndex; i++) {
-        if (messages[i].role !== 'rejected') {
-          backendRollbackIndex++
-        }
-      }
-      
-      // If there are messages after the target user message, rollback first
+      // If there are messages after the target user message, rollback first using message ID
       if (rollbackIndex < messages.length) {
-        const rollbackData = await rollbackToPoint(sessionId, backendRollbackIndex)
+        const messageToRollbackFrom = messages[rollbackIndex]
+        if (!messageToRollbackFrom?.id) {
+          hideLoading()
+          showToast('Cannot rollback: message has no ID', 'error')
+          setRegenerateTargetIndex(null)
+          return
+        }
+        
+        const rollbackData = await rollbackToPoint(sessionId, messageToRollbackFrom.id)
         if (!rollbackData.success) {
           hideLoading()
           showToast(rollbackData.error || 'Cannot rollback before regenerating', 'error')
           setRegenerateTargetIndex(null)
-          setRejectedUserMessage(null)
           return
         }
         // Update frontend state after rollback
@@ -344,7 +426,7 @@ function ChatPanel({ onSimulationEnd, onNewSession }) {
       }
       
       // Now regenerate the user response with the rejected message and feedback
-      const data = await regenerateUserResponse(sessionId, rejectedUserMessage, feedback)
+      const data = await regenerateUserResponse(sessionId, rejectedMessageContent, additionalNote || null)
       hideLoading()
       
       if (data.success) {
@@ -377,26 +459,124 @@ function ChatPanel({ onSimulationEnd, onNewSession }) {
     }
     
     setRegenerateTargetIndex(null)
-    setRejectedUserMessage(null)
-  }, [sessionId, regenerateTargetIndex, rejectedUserMessage, messages, isSimulationActive, setMessages, setIsSimulationActive, showLoading, hideLoading, showToast])
+  }, [sessionId, regenerateTargetIndex, messages, isSimulationActive, setMessages, setIsSimulationActive, showLoading, hideLoading, showToast])
 
-  const handleRegenerateUserCancel = useCallback(() => {
-    setShowRegenerateUserDialog(false)
+  const handleRegenerateCancel = useCallback(() => {
+    setShowRegenerateDialog(false)
     setRegenerateTargetIndex(null)
-    setRejectedUserMessage(null)
   }, [])
 
-  // Handle removing a rejected message
-  const handleRemoveRejected = useCallback((messageId) => {
-    removeMessage(messageId)
-    showToast('Rejected action removed from trajectory', 'info')
-  }, [removeMessage, showToast])
+  // Handle edit message click - opens the edit dialog
+  const handleEditMessageClick = useCallback((messageIndex, role, content) => {
+    const message = messages[messageIndex]
+    if (message) {
+      setEditTarget({
+        index: messageIndex,
+        role: role,
+        content: content,
+        messageId: message.id
+      })
+      setShowEditDialog(true)
+    }
+  }, [messages])
+
+  // Execute the edit
+  const handleEditConfirm = useCallback(async (newContent) => {
+    setShowEditDialog(false)
+    
+    if (!sessionId || !editTarget) {
+      setEditTarget(null)
+      return
+    }
+
+    try {
+      showLoading('Saving edit...')
+      
+      // Call the API to edit the message
+      await editTrajectoryMessage(sessionId, editTarget.messageId, newContent)
+      
+      hideLoading()
+      
+      // Update the message in frontend state
+      setMessages(prev => {
+        const newMessages = [...prev]
+        if (newMessages[editTarget.index]) {
+          newMessages[editTarget.index] = {
+            ...newMessages[editTarget.index],
+            content: newContent
+          }
+        }
+        return newMessages
+      })
+      
+      showToast('Message updated', 'success')
+    } catch (error) {
+      hideLoading()
+      showToast('Failed to edit: ' + error.message, 'error')
+    }
+    
+    setEditTarget(null)
+  }, [sessionId, editTarget, setMessages, showLoading, hideLoading, showToast])
+
+  const handleEditCancel = useCallback(() => {
+    setShowEditDialog(false)
+    setEditTarget(null)
+  }, [])
+
+  // Wrapper for rollback that handles completed trajectory warning
+  const handleRollbackWithWarning = useCallback((messageIndex) => {
+    if (wasOriginallyCompleted) {
+      // Show warning dialog and store the pending action
+      setPendingRegenerateAction({ type: 'rollback', index: messageIndex })
+      setShowCompletedWarning(true)
+    } else {
+      // Proceed directly
+      handleRollback(messageIndex)
+    }
+  }, [wasOriginallyCompleted, handleRollback])
+
+  // Wrapper for regenerate user that handles completed trajectory warning
+  const handleRegenerateUserWithWarning = useCallback((messageIndex) => {
+    if (wasOriginallyCompleted) {
+      // Show warning dialog and store the pending action
+      setPendingRegenerateAction({ type: 'regenerateUser', index: messageIndex })
+      setShowCompletedWarning(true)
+    } else {
+      // Proceed directly
+      handleRegenerateUserClick(messageIndex)
+    }
+  }, [wasOriginallyCompleted, handleRegenerateUserClick])
+
+  // Handle completed warning confirmation
+  const handleCompletedWarningConfirm = useCallback(async () => {
+    setShowCompletedWarning(false)
+    
+    if (!pendingRegenerateAction) return
+    
+    // First, mark the trajectory as incomplete
+    if (onMarkIncomplete) {
+      await onMarkIncomplete()
+    }
+    
+    // Then proceed with the pending action
+    if (pendingRegenerateAction.type === 'rollback') {
+      handleRollback(pendingRegenerateAction.index)
+    } else if (pendingRegenerateAction.type === 'regenerateUser') {
+      handleRegenerateUserClick(pendingRegenerateAction.index)
+    }
+    
+    setPendingRegenerateAction(null)
+  }, [pendingRegenerateAction, onMarkIncomplete, handleRollback, handleRegenerateUserClick])
+
+  // Handle completed warning cancel
+  const handleCompletedWarningCancel = useCallback(() => {
+    setShowCompletedWarning(false)
+    setPendingRegenerateAction(null)
+  }, [])
 
   return (
     <div className="chat-panel">
-      <ChatHeader
-        onNewSession={onNewSession}
-      />
+      <ChatHeader />
       
       {persona && (
         <StickyUserMessage content={persona} />
@@ -405,12 +585,14 @@ function ChatPanel({ onSimulationEnd, onNewSession }) {
       <div className="chat-messages">
         <MessageList 
           messages={messages}
-          onRollback={handleRollback}
-          onRegenerateUser={handleRegenerateUserClick}
-          onRemoveRejected={handleRemoveRejected}
+          onRollback={handleRollbackWithWarning}
+          onRegenerateUser={handleRegenerateUserWithWarning}
+          onEditMessage={handleEditMessageClick}
+          onRemoveRejected={removeMessage}
           isSimulationActive={isSimulationActive}
           isConversationEnded={!isSimulationActive}
           onNewSession={onNewSession}
+          wasOriginallyCompleted={wasOriginallyCompleted}
         />
         
         {pendingAction && (
@@ -418,6 +600,8 @@ function ChatPanel({ onSimulationEnd, onNewSession }) {
             action={pendingAction}
             onApprove={() => handleActionApprove(pendingAction)}
             onReject={handleActionReject}
+            policyResult={pendingPolicyResult}
+            isCheckingPolicy={isCheckingPolicy}
           />
         )}
         
@@ -429,22 +613,43 @@ function ChatPanel({ onSimulationEnd, onNewSession }) {
       <ChatInput
         onSend={handleSendMessage}
         onAutoGenerate={handleAutoGenerate}
-        disabled={inputDisabled || !isSimulationActive}
+        disabled={inputDisabled || !isSimulationActive || isCheckingPolicy}
       />
       
-      {showRegenerateUserDialog && rejectedUserMessage && (
-        <RegenerateUserDialog
-          rejectedMessage={rejectedUserMessage}
-          onConfirm={handleRegenerateUserConfirm}
-          onCancel={handleRegenerateUserCancel}
+      {showRegenerateDialog && (
+        <PromptDialog
+          title="🔄 Regenerate User Response"
+          message="Add optional guidance for the user agent (e.g., 'be more direct', 'follow the persona more closely'):"
+          placeholder="Additional guidance (optional)"
+          onConfirm={handleRegenerateConfirm}
+          onCancel={handleRegenerateCancel}
+          allowEmpty={true}
         />
       )}
       
-      {showRegenerateActionDialog && rejectedActionForRegenerate && (
+      {showRegenerateActionDialog && rejectedAction && (
         <RegenerateActionDialog
-          rejectedAction={rejectedActionForRegenerate}
+          rejectedAction={rejectedAction}
           onConfirm={handleRegenerateActionConfirm}
           onCancel={handleRegenerateActionCancel}
+        />
+      )}
+
+      {showEditDialog && editTarget && (
+        <EditMessageDialog
+          messageContent={editTarget.content}
+          messageRole={editTarget.role}
+          onConfirm={handleEditConfirm}
+          onCancel={handleEditCancel}
+        />
+      )}
+
+      {showCompletedWarning && (
+        <ConfirmDialog
+          title="⚠️ Modify Completed Trajectory"
+          message="This trajectory is marked as complete. Regenerating will change its status to incomplete. Do you want to continue?"
+          onConfirm={handleCompletedWarningConfirm}
+          onCancel={handleCompletedWarningCancel}
         />
       )}
     </div>

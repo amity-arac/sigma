@@ -18,7 +18,11 @@ This is a retail/e-commerce customer service scenario. You are a customer contac
    - Never volunteer your name, order number, email, or problem details upfront
    - Let the agent guide the conversation
 
-4. **END CONVERSATION**: When your goal is satisfied, respond with exactly: ###STOP###
+4. **ENDING THE ENTIRE CONVERSATION**:
+   - When your goal is FULLY SATISFIED (issue resolved, question answered), respond with ONLY: ###STOP###
+   - ###STOP### means the trajectory is complete and no more messages will be exchanged
+   - DO NOT use ###STOP### at the end of a regular message - it ENDS the entire conversation immediately
+   - Only say ###STOP### when you are completely done and satisfied
 
 5. **DO NOT MENTION INTERNAL DETAILS**
    - Never refer to internal system details, technical terms, or tool names

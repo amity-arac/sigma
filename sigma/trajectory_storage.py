@@ -107,6 +107,7 @@ class TrajectoryData(BaseModel):
     task_index: Optional[int] = None
     task_split: Optional[str] = None
     task_instruction: Optional[str] = None
+    seed_task_id: Optional[str] = None  # The ID of the original task that inspired this scenario
     
     # User info (for GRPO training data)
     user_id: Optional[str] = None
@@ -184,7 +185,7 @@ class LocalStorageBackend(StorageBackend):
     Best for: Development, testing, small-scale usage
     """
     
-    def __init__(self, base_path: str = "./trajectories"):
+    def __init__(self, base_path: str = "./data/trajectories"):
         self.base_path = Path(base_path)
         self.base_path.mkdir(parents=True, exist_ok=True)
     
@@ -290,12 +291,6 @@ class BlobStorageBackend(StorageBackend):
     {container}/{env_name}/{date}/{trajectory_id}.json
     
     Best for: Production, analytics pipelines, ML training data
-    
-    Advantages over CosmosDB:
-    - Much cheaper for storage
-    - Easy to process with pandas, DuckDB, Spark
-    - Direct integration with Azure ML, Databricks
-    - Simple to download/export for offline processing
     """
     
     def __init__(
@@ -463,13 +458,13 @@ class TrajectoryStorage:
         
         # Explicit backend
         storage = TrajectoryStorage(backend='blob')
-        storage = TrajectoryStorage(backend='local', local_path='./my_trajectories')
+        storage = TrajectoryStorage(backend='local', local_path='./data/trajectories')
     """
     
     def __init__(
         self,
         backend: Optional[Literal['local', 'blob']] = None,
-        local_path: str = "./trajectories",
+        local_path: str = "./data/trajectories",
         **kwargs
     ):
         # Auto-detect backend from environment if not specified

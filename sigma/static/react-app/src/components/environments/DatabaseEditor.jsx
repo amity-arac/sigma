@@ -1,20 +1,6 @@
 import { useState, useMemo } from 'react'
 import './DatabaseEditor.css'
 
-// Icon mapping for common data types
-const ICON_MAP = {
-  users: '👤',
-  products: '📦',
-  orders: '🛒',
-  flights: '✈️',
-  reservations: '🎫',
-  customers: '👥',
-  inventory: '📋',
-  transactions: '💳',
-  bookings: '📅',
-  default: '📄'
-}
-
 // Get a display-friendly label from a key
 function formatLabel(key) {
   return key
@@ -404,8 +390,7 @@ function DatabaseEditor({ content, onChange }) {
       .filter(key => typeof db[key] === 'object' && db[key] !== null && !Array.isArray(db[key]))
       .map(key => ({
         id: key,
-        label: formatLabel(key),
-        icon: ICON_MAP[key.toLowerCase()] || ICON_MAP.default
+        label: formatLabel(key)
       }))
   }, [db])
   
@@ -534,7 +519,6 @@ function DatabaseEditor({ content, onChange }) {
               className={`tab ${activeTab === tab.id ? 'active' : ''}`}
               onClick={() => { setActiveTab(tab.id); setSelectedRecord(null); setSearchTerm(''); }}
             >
-              <span className="tab-icon">{tab.icon}</span>
               <span className="tab-label">{tab.label}</span>
               <span className="tab-count">{Object.keys(db[tab.id] || {}).length}</span>
             </button>

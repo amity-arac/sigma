@@ -1,0 +1,147 @@
+.policy-review-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.policy-review-dialog {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.policy-review-dialog h3 {
+  margin: 0 0 20px 0;
+  color: #333;
+  font-size: 1.4em;
+  border-bottom: 2px solid #e0e0e0;
+  padding-bottom: 12px;
+}
+
+.policy-review-section {
+  margin-bottom: 20px;
+}
+
+.policy-review-section h4 {
+  margin: 0 0 8px 0;
+  color: #555;
+  font-size: 0.9em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.action-preview {
+  background: #f5f5f5;
+  padding: 12px;
+  border-radius: 8px;
+  font-family: monospace;
+  font-size: 0.9em;
+  word-break: break-word;
+  border-left: 3px solid #2196f3;
+}
+
+.action-reasoning {
+  margin-top: 8px;
+  font-size: 0.85em;
+  color: #666;
+  font-style: italic;
+}
+
+.confidence-indicator {
+  font-size: 1.1em;
+  margin-bottom: 8px;
+}
+
+.approval-status {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.approval-status.approved {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.approval-status.not-approved {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.policy-reason {
+  margin: 0;
+  padding: 12px;
+  background: #fff3e0;
+  border-radius: 8px;
+  border-left: 3px solid #ff9800;
+  color: #555;
+  line-height: 1.5;
+}
+
+.policy-concerns-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.policy-concerns-list li {
+  margin-bottom: 8px;
+  color: #d32f2f;
+  line-height: 1.4;
+}
+
+.policy-review-note {
+  background: #e3f2fd;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 0.85em;
+  color: #1565c0;
+  margin-bottom: 20px;
+}
+
+.policy-review-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.policy-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.policy-btn-reject {
+  background: #f5f5f5;
+  color: #666;
+}
+
+.policy-btn-reject:hover {
+  background: #e0e0e0;
+}
+
+.policy-btn-approve {
+  background: #4caf50;
+  color: white;
+}
+
+.policy-btn-approve:hover {
+  background: #43a047;
+}

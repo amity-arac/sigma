@@ -12,6 +12,7 @@
   padding: 12px 16px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
 }
 
@@ -20,6 +21,7 @@
   margin: 0;
   font-size: 0.95em;
   font-weight: 600;
+  flex: 1;
 }
 
 .action-suggestion-body {
@@ -241,5 +243,190 @@
   
   .action-suggestion-buttons .btn-approve {
     flex: 1.2;
+  }
+  
+  .policy-concerns-section {
+    padding: 8px;
+    font-size: 0.8em;
+  }
+  
+  .approval-details-panel {
+    padding: 8px;
+    font-size: 0.75em;
+  }
+}
+
+/* Policy Review Styles */
+.action-suggestion.needs-review {
+  border-color: #ff9800;
+}
+
+.action-suggestion-header.review-header {
+  background: linear-gradient(135deg, #e65100, #ff9800);
+}
+
+.approval-details-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.75em;
+  cursor: pointer;
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.approval-details-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.approval-details-panel {
+  background: rgba(76, 175, 80, 0.1);
+  border-bottom: 1px solid rgba(76, 175, 80, 0.3);
+  padding: 12px 16px;
+}
+
+.approval-details-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+  align-items: flex-start;
+}
+
+.approval-details-row:last-child {
+  margin-bottom: 0;
+}
+
+.approval-details-row.analysis {
+  flex-direction: column;
+  gap: 4px;
+}
+
+.approval-label {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.85em;
+  flex-shrink: 0;
+}
+
+.approval-value {
+  font-size: 0.85em;
+  color: var(--text-primary);
+}
+
+.policy-concerns-section {
+  background: rgba(255, 152, 0, 0.1);
+  border-bottom: 1px solid rgba(255, 152, 0, 0.3);
+  padding: 12px 16px;
+}
+
+.policy-assessment {
+  margin-bottom: 10px;
+}
+
+.confidence-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.confidence-label {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.85em;
+}
+
+.confidence-value {
+  font-weight: 600;
+  font-size: 0.85em;
+}
+
+.policy-reason {
+  font-size: 0.85em;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.concerns-list {
+  font-size: 0.85em;
+  margin-bottom: 10px;
+}
+
+.concerns-list strong {
+  color: #ff9800;
+}
+
+.concerns-list ul {
+  margin: 6px 0 0 0;
+  padding-left: 20px;
+}
+
+.concerns-list li {
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.analysis-details {
+  font-size: 0.8em;
+  background: var(--bg-primary);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+.analysis-details summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.analysis-details summary:hover {
+  color: var(--text-primary);
+}
+
+.analysis-details p {
+  margin: 8px 0 0 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+/* Checking Policy State */
+.action-suggestion.checking-policy {
+  border-color: #9c27b0;
+}
+
+.action-suggestion-header.checking-header {
+  background: linear-gradient(135deg, #6a1b9a, #9c27b0);
+}
+
+.action-suggestion-buttons.checking {
+  justify-content: center;
+}
+
+.policy-check-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 0.9em;
+  padding: 4px 0;
+}
+
+.policy-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: #9c27b0;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }

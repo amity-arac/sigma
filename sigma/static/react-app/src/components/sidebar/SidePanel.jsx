@@ -1,9 +1,18 @@
 import { useState, useRef, useEffect } from 'react'
 import { useSession } from '../../context/SessionContext'
 import { generateResponse } from '../../services/api'
-import PanelCard from './PanelCard'
 import ToolsList from './ToolsList'
+import InjectedDataPanel from './InjectedDataPanel'
 import './SidePanel.css'
+
+// Tab configuration
+const TABS = [
+  { id: 'policy-ai', label: '🤖 Policy AI', icon: '🤖' },
+  { id: 'data', label: '📊 Data', icon: '📊' },
+  { id: 'tools', label: '🔧 Tools', icon: '🔧' },
+  { id: 'persona', label: '👤 Persona', icon: '👤' },
+  { id: 'wiki', label: '📖 Wiki', icon: '📖' },
+]
 
 // Helper to parse and format policy answer with highlighted citations
 function PolicyAnswer({ answer }) {
@@ -44,7 +53,8 @@ function PolicyAnswer({ answer }) {
 }
 
 function SidePanel() {
-  const { tools, persona, wiki, sessionId } = useSession()
+  const { tools, persona, wiki, sessionId, injectedData } = useSession()
+  const [activeTab, setActiveTab] = useState('policy-ai')
   const [policyQuestion, setPolicyQuestion] = useState('')
   const [isAskingPolicy, setIsAskingPolicy] = useState(false)
   const [qaConversation, setQaConversation] = useState([])
@@ -64,7 +74,6 @@ function SidePanel() {
     const currentQuestion = policyQuestion.trim()
     setIsAskingPolicy(true)
     setPolicyQuestion('')
-    setIsQaExpanded(true)
     
     // Add question to conversation immediately
     setQaConversation(prev => [...prev, { question: currentQuestion, answer: null, isLoading: true }])
@@ -107,86 +116,137 @@ Be specific and cite the actual policy text. Do not paraphrase - use exact quote
     }
   }
 
+  // Filter tabs - only show Data tab if injectedData exists
+  const visibleTabs = TABS.filter(tab => {
+    if (tab.id === 'data') return !!injectedData
+    return true
+  })
+
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'policy-ai':
+        return (
+          <div className="tab-content-inner">
+            {wiki && sessionId ? (
+              <div className="desktop-policy-qa-standalone">
+                {/* Q&A Conversation Area */}
+                <div className="policy-qa-conversation-desktop" ref={qaScrollRef}>
+                  {qaConversation.length === 0 ? (
+                    <div className="qa-empty-state-desktop">
+                      <span>🤖</span>
+                      <p>Ask questions about the policy and I'll help you find the right answer with exact citations.</p>
+                    </div>
+                  ) : (
+                    qaConversation.map((item, index) => (
+                      <div key={index} className="qa-exchange-desktop">
+                        <div className="qa-question-desktop">
+                          <span className="qa-role-desktop">👤 You</span>
+                          <p>{item.question}</p>
+                        </div>
+                        <div className="qa-answer-desktop">
+                          <span className="qa-role-desktop">🤖 Policy AI</span>
+                          {item.isLoading ? (
+                            <p className="qa-loading-desktop">
+                              <span className="loading-dots">Searching policy</span>
+                            </p>
+                          ) : (
+                            <PolicyAnswer answer={item.answer} />
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                
+                {/* Input Row */}
+                <div className="policy-qa-input-row-desktop">
+                  <input
+                    ref={qaInputRef}
+                    type="text"
+                    className="policy-qa-input-desktop"
+                    placeholder="Ask about policy..."
+                    value={policyQuestion}
+                    onChange={(e) => setPolicyQuestion(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAskPolicy()}
+                    disabled={isAskingPolicy}
+                  />
+                  <button
+                    className="policy-qa-btn-desktop"
+                    onClick={handleAskPolicy}
+                    disabled={isAskingPolicy || !policyQuestion.trim()}
+                    title="Ask Policy AI"
+                  >
+                    {isAskingPolicy ? '...' : '↑'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="qa-empty-state-desktop">
+                <span>🤖</span>
+                <p>Load a policy document to use Policy AI</p>
+              </div>
+            )}
+          </div>
+        )
+      
+      case 'data':
+        return (
+          <div className="tab-content-inner tab-content-scrollable">
+            <InjectedDataPanel embedded />
+          </div>
+        )
+      
+      case 'tools':
+        return (
+          <div className="tab-content-inner tab-content-scrollable">
+            <ToolsList tools={tools} />
+          </div>
+        )
+      
+      case 'persona':
+        return (
+          <div className="tab-content-inner tab-content-scrollable">
+            <div className="persona-display-full">
+              {persona || 'No persona loaded'}
+            </div>
+          </div>
+        )
+      
+      case 'wiki':
+        return (
+          <div className="tab-content-inner tab-content-scrollable">
+            <div className="wiki-content-full">
+              {wiki || 'No wiki loaded'}
+            </div>
+          </div>
+        )
+      
+      default:
+        return null
+    }
+  }
+
   return (
     <div className="side-panel">
-      {/* Policy AI - First Panel */}
-      <PanelCard title="🤖 Policy AI" defaultExpanded>
-        {wiki && sessionId ? (
-          <div className="desktop-policy-qa-standalone">
-            {/* Q&A Conversation Area */}
-            <div className="policy-qa-conversation-desktop" ref={qaScrollRef}>
-              {qaConversation.length === 0 ? (
-                <div className="qa-empty-state-desktop">
-                  <span>🤖</span>
-                  <p>Ask questions about the policy and I'll help you find the right answer with exact citations.</p>
-                </div>
-              ) : (
-                qaConversation.map((item, index) => (
-                  <div key={index} className="qa-exchange-desktop">
-                    <div className="qa-question-desktop">
-                      <span className="qa-role-desktop">👤 You</span>
-                      <p>{item.question}</p>
-                    </div>
-                    <div className="qa-answer-desktop">
-                      <span className="qa-role-desktop">🤖 Policy AI</span>
-                      {item.isLoading ? (
-                        <p className="qa-loading-desktop">
-                          <span className="loading-dots">Searching policy</span>
-                        </p>
-                      ) : (
-                        <PolicyAnswer answer={item.answer} />
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-            
-            {/* Input Row */}
-            <div className="policy-qa-input-row-desktop">
-              <input
-                ref={qaInputRef}
-                type="text"
-                className="policy-qa-input-desktop"
-                placeholder="Ask about policy..."
-                value={policyQuestion}
-                onChange={(e) => setPolicyQuestion(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAskPolicy()}
-                disabled={isAskingPolicy}
-              />
-              <button
-                className="policy-qa-btn-desktop"
-                onClick={handleAskPolicy}
-                disabled={isAskingPolicy || !policyQuestion.trim()}
-                title="Ask Policy AI"
-              >
-                {isAskingPolicy ? '...' : '↑'}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="qa-empty-state-desktop">
-            <span>🤖</span>
-            <p>Load a policy document to use Policy AI</p>
-          </div>
-        )}
-      </PanelCard>
-
-      <PanelCard title="🔧 Tools" defaultExpanded>
-        <ToolsList tools={tools} />
-      </PanelCard>
+      {/* Tab Headers */}
+      <div className="side-panel-tabs">
+        {visibleTabs.map(tab => (
+          <button
+            key={tab.id}
+            className={`side-panel-tab ${activeTab === tab.id ? 'active' : ''}`}
+            onClick={() => setActiveTab(tab.id)}
+            title={tab.label}
+          >
+            <span className="tab-icon">{tab.icon}</span>
+            <span className="tab-label">{tab.label.replace(/^[^\s]+\s/, '')}</span>
+          </button>
+        ))}
+      </div>
       
-      <PanelCard title="👤 User Persona">
-        <div className="persona-display">
-          {persona || 'No persona loaded'}
-        </div>
-      </PanelCard>
-      
-      <PanelCard title="📖 Policy / Wiki">
-        <div className="wiki-content">
-          {wiki || 'No wiki loaded'}
-        </div>
-      </PanelCard>
+      {/* Tab Content */}
+      <div className="side-panel-content">
+        {renderTabContent()}
+      </div>
     </div>
   )
 }

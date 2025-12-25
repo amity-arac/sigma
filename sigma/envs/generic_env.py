@@ -7,7 +7,7 @@ This module provides shared loading functions for all environments.
 Data files are stored in data/envs/<env_name>/:
 - db.json: Database with environment data
 - tasks.json: Tasks in the standard format
-- policy.md: Agent policy (includes behavioral rules)
+- policy.md: Agent policy (includes guidelines and behavioral rules)
 - user_guidelines.md: (optional) User simulation guidelines
 - tools.py: Python tool implementations
 

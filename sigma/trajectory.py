@@ -262,6 +262,12 @@ class Trajectory:
         
         # Build trajectory data
         trajectory_id = simulator.session_id  # Use session_id as trajectory_id
+        
+        # Get seed_task_id from persona_data if available (for generated scenarios)
+        seed_task_id = None
+        if simulator.persona_data:
+            seed_task_id = simulator.persona_data.get("seed_task_id")
+        
         data = TrajectoryData(
             id=trajectory_id,
             session_id=trajectory_id,
@@ -270,6 +276,7 @@ class Trajectory:
             task_index=task_index,
             task_split=task_split,
             task_instruction=task_instruction,
+            seed_task_id=seed_task_id,
             user_id=user_id,
             user_model=user_model,
             user_provider=user_provider,
@@ -352,6 +359,7 @@ class Trajectory:
             task_index=data_dict.get('task_index'),
             task_split=data_dict.get('task_split', 'test'),
             task_instruction=data_dict.get('task_instruction'),
+            seed_task_id=data_dict.get('seed_task_id'),
             user_id=data_dict.get('user_id'),
             user_model=data_dict.get('user_model', 'gpt-4o'),
             user_provider=data_dict.get('user_provider', 'openai'),

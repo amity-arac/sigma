@@ -208,12 +208,7 @@ def _build_db_data(persona_data: Optional[Dict[str, Any]], user_id: str) -> Opti
             persona_data['user'].get('user_id', user_id): persona_data['user']
         }
     
-    # Include orders/reservations data (based on data_key from scenario)
-    for data_key in ['orders', 'reservations', 'bookings', 'tickets']:
-        if data_key in persona_data and persona_data[data_key]:
-            db_data[data_key] = persona_data[data_key]
-    
-    # Include augmented_data (products, flights, etc. that were injected into DB)
+    # Include all augmented_data (orders, reservations, products, flights, etc.)
     augmented_data = persona_data.get('augmented_data', {})
     if augmented_data:
         for collection_name, collection_data in augmented_data.items():

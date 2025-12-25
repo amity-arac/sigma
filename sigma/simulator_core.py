@@ -108,7 +108,8 @@ def load_base_prompt(filename: str) -> str:
 
 def load_env_guidelines(env_name: str, filename: str) -> str:
     """Load environment-specific guidelines, or return empty string."""
-    env_path = os.path.join(os.path.dirname(__file__), "envs", env_name)
+    from sigma.envs.paths import DATA_ENVS_PATH
+    env_path = os.path.join(DATA_ENVS_PATH, env_name)
     guidelines_path = os.path.join(env_path, filename)
     if os.path.exists(guidelines_path):
         with open(guidelines_path, "r") as f:
@@ -144,6 +145,7 @@ class ConversationEntry:
     content: Optional[str] = None
     tool_call: Optional[Dict[str, Any]] = None
     timestamp: Optional[str] = None
+    id: Optional[str] = None  # Unique message ID for idempotent operations
 
 
 @dataclass
@@ -383,32 +385,34 @@ class SimulatorCore:
                 content = msg.content
                 tool_name = msg.tool_name
                 tool_arguments = msg.tool_arguments
+                msg_id = msg.id
             else:
                 role = msg.get('role', '')
                 content = msg.get('content', '')
                 tool_name = msg.get('tool_name')
                 tool_arguments = msg.get('tool_arguments')
+                msg_id = msg.get('id')
             
             if role == 'user':
-                self._add_conversation_entry('user', content=content)
+                self._add_conversation_entry('user', content=content, entry_id=msg_id)
                 # Also add to user simulation's message history
                 # The user's (customer's) messages are stored as "assistant" role in the LLM context
                 # (since the LLM is playing the customer role)
                 self.env.user.messages.append({"role": "assistant", "content": content})
             elif role == 'agent':
                 if tool_name:
-                    self._add_conversation_entry('agent', tool_call={'name': tool_name, 'arguments': tool_arguments})
+                    self._add_conversation_entry('agent', tool_call={'name': tool_name, 'arguments': tool_arguments}, entry_id=msg_id)
                 else:
-                    self._add_conversation_entry('agent', content=content)
+                    self._add_conversation_entry('agent', content=content, entry_id=msg_id)
                     # Agent text responses need to be added to user's context as "user" role
                     # (input to the LLM that plays the customer)
                     self.env.user.messages.append({"role": "user", "content": f"The customer service agent says: {content}\n\nGenerate your response as the customer."})
             elif role == 'tool':
                 # Tool call entry (legacy format - tool calls are now in agent messages)
                 if tool_name:
-                    self._add_conversation_entry('agent', tool_call={'name': tool_name, 'arguments': tool_arguments})
+                    self._add_conversation_entry('agent', tool_call={'name': tool_name, 'arguments': tool_arguments}, entry_id=msg_id)
             elif role == 'tool-result':
-                self._add_conversation_entry('tool', content=content)
+                self._add_conversation_entry('tool', content=content, entry_id=msg_id)
             # Skip 'rejected' and 'system' messages as they don't affect simulation state
 
     def _generate_new_scenario(self) -> None:
@@ -463,31 +467,29 @@ class SimulatorCore:
         if user_data.get("membership"):
             user_context_parts.append(f"- Membership: {user_data['membership']}")
         
-        # Get the data key from registry
-        try:
-            env_config = get_environment_config(self.env_name)
-            data_key = env_config.data_key
-        except ValueError:
-            data_key = "orders" if self.env_name == "retail" else "reservations"
+        # Get user's data items from augmented_data (orders/reservations)
+        augmented_data = self.persona_data.get("augmented_data", {})
         
-        # Add data items info
-        items = self.persona_data.get(data_key, {})
-        if items:
-            user_context_parts.append(f"- Your {data_key.title()}: {', '.join(items.keys())}")
-            for item_id, item in items.items():
-                summary_parts = []
-                if "status" in item:
-                    summary_parts.append(item.get("status"))
-                if "origin" in item and "destination" in item:
-                    summary_parts.append(f"{item.get('origin')} → {item.get('destination')}")
-                if "cabin" in item:
-                    summary_parts.append(f"({item.get('cabin')})")
-                if "items" in item:
-                    item_names = [i.get("name", "item") for i in item.get("items", [])]
-                    summary_parts.append(f"Items: {', '.join(item_names)}")
-                
-                summary = " - ".join(summary_parts) if summary_parts else ""
-                user_context_parts.append(f"  - {item_id}: {summary}")
+        # Check for orders or reservations in augmented_data
+        for data_key in ["orders", "reservations", "bookings"]:
+            items = augmented_data.get(data_key, {})
+            if items:
+                user_context_parts.append(f"- Your {data_key.title()}: {', '.join(items.keys())}")
+                for item_id, item in items.items():
+                    summary_parts = []
+                    if "status" in item:
+                        summary_parts.append(item.get("status"))
+                    if "origin" in item and "destination" in item:
+                        summary_parts.append(f"{item.get('origin')} → {item.get('destination')}")
+                    if "cabin" in item:
+                        summary_parts.append(f"({item.get('cabin')})")
+                    if "items" in item:
+                        item_names = [i.get("name", "item") for i in item.get("items", [])]
+                        summary_parts.append(f"Items: {', '.join(item_names)}")
+                    
+                    summary = " - ".join(summary_parts) if summary_parts else ""
+                    user_context_parts.append(f"  - {item_id}: {summary}")
+                break  # Only show one type of data items
         
         # Add payment methods
         payment_methods = user_data.get("payment_methods", {})
@@ -514,8 +516,7 @@ class SimulatorCore:
         
         This includes:
         1. User data (user profile)
-        2. Primary data items (orders/reservations)
-        3. Augmented data (any additional data like products, flights, etc.)
+        2. All augmented data (orders, reservations, products, flights, etc.)
         """
         if not self.persona_data:
             return
@@ -530,28 +531,14 @@ class SimulatorCore:
         self.env.data["users"][user_id] = user_data
         _debug_log(f"Injected user: {user_id}")
         
-        # Get the data key from registry
-        try:
-            env_config = get_environment_config(self.env_name)
-            data_key = env_config.data_key
-        except ValueError:
-            data_key = "orders" if self.env_name == "retail" else "reservations"
-        
-        # Inject primary data items (orders/reservations)
-        items = self.persona_data.get(data_key, {})
-        if items and data_key in self.env.data:
-            for item_id, item in items.items():
-                self.env.data[data_key][item_id] = item
-                _debug_log(f"Injected {data_key} item: {item_id}")
-        
-        # Inject augmented data (products, flights, etc.)
+        # Inject all augmented data (orders, reservations, products, flights, etc.)
         augmented_data = self.persona_data.get("augmented_data", {})
         if augmented_data:
             for collection_name, collection_items in augmented_data.items():
                 if collection_name in self.env.data and isinstance(collection_items, dict):
                     for item_id, item in collection_items.items():
                         self.env.data[collection_name][item_id] = item
-                        _debug_log(f"Injected augmented {collection_name} item: {item_id}")
+                        _debug_log(f"Injected {collection_name} item: {item_id}")
 
     def _load_env(self) -> Env:
         """Load the environment based on env_name using the registry."""
@@ -793,12 +780,19 @@ class SimulatorCore:
         role: str,
         content: Optional[str] = None,
         tool_call: Optional[Dict[str, Any]] = None,
+        entry_id: Optional[str] = None,
     ):
         """Add an entry to conversation history."""
+        import time
+        # Generate a unique ID using timestamp if not provided
+        if entry_id is None:
+            entry_id = str(time.time() * 1000)  # Millisecond timestamp as string
+        
         entry = ConversationEntry(
             role=role,
             content=content,
             tool_call=tool_call,
+            id=entry_id,
         )
         self.state.conversation_history.append(entry)
 
@@ -861,11 +855,42 @@ class SimulatorCore:
             "remaining_count": len(self.state.conversation_history)
         }
 
+    def rollback_to_message_id(self, message_id: str) -> Dict[str, Any]:
+        """
+        Rollback conversation history to a specific message ID.
+        
+        This removes the message with the given ID and all entries after it.
+        Uses message ID for idempotent operations.
+        
+        Args:
+            message_id: The ID of the message to rollback to. This message and all
+                       subsequent messages will be removed.
+        
+        Returns:
+            Dict with success status, removed_count and remaining_count.
+        """
+        # Find the index of the message with the given ID
+        target_index = None
+        for i, entry in enumerate(self.state.conversation_history):
+            if entry.id == message_id:
+                target_index = i
+                break
+        
+        if target_index is None:
+            return {
+                "success": False,
+                "error": f"Message with ID '{message_id}' not found in conversation history",
+                "removed_count": 0,
+                "remaining_count": len(self.state.conversation_history)
+            }
+        
+        return self.rollback_to_index(target_index)
+
     def rollback_to_index(self, target_index: int) -> Dict[str, Any]:
         """
         Rollback conversation history to a specific index.
         
-        This removes all entries from target_index onwards (exclusive).
+        This removes all entries from target_index onwards (inclusive).
         
         Args:
             target_index: The index to rollback to. All entries at and after this index
@@ -895,6 +920,7 @@ class SimulatorCore:
         while len(self.state.conversation_history) > target_index:
             removed = self.state.conversation_history.pop()
             removed_entries.append({
+                "id": removed.id,
                 "role": removed.role,
                 "content": removed.content[:100] if removed.content else None,
                 "tool_call": removed.tool_call
@@ -1045,32 +1071,6 @@ class SimulatorCore:
                 "",
             ])
         
-        # Add rejection context if regenerating
-        if rejected_message and feedback:
-            system_prompt_parts.extend([
-                "",
-                "## IMPORTANT: Previous Response Rejected",
-                f"Your previous response was: \"{rejected_message}\"",
-                f"Feedback: {feedback}",
-                "",
-                "Generate a NEW response that addresses this feedback while maintaining your persona.",
-                ""
-            ])
-        elif rejected_message:
-            system_prompt_parts.extend([
-                "",
-                "## IMPORTANT: Previous Response Rejected", 
-                f"Your previous response was: \"{rejected_message}\"",
-                "",
-                "Generate a different, improved response.",
-                ""
-            ])
-        elif feedback:
-            system_prompt_parts.extend([
-                "",
-                f"IMPORTANT GUIDANCE FOR THIS RESPONSE: {feedback}"
-            ])
-        
         system_prompt = "\n".join(system_prompt_parts)
         
         # Build message history similar to LLMUserSimulationEnv
@@ -1080,19 +1080,57 @@ class SimulatorCore:
         ]
         
         # Add conversation history (convert from our format to user simulation format)
-        # Skip the last user message since we're regenerating it
-        for entry in self.state.conversation_history:
+        # Skip the last agent message since we'll add it explicitly at the end
+        history_entries = list(self.state.conversation_history)
+        # Find and remove the last agent entry (it will be added as the final prompt)
+        last_agent_idx = None
+        for i in range(len(history_entries) - 1, -1, -1):
+            if history_entries[i].role == "agent" and history_entries[i].content:
+                last_agent_idx = i
+                break
+        if last_agent_idx is not None:
+            history_entries = history_entries[:last_agent_idx]
+        
+        for entry in history_entries:
             if entry.role == "user":
                 # Customer's previous messages become "assistant" in user simulation
                 messages.append({"role": "assistant", "content": entry.content})
             elif entry.role == "agent":
                 # Agent's messages become "user" prompts in user simulation
                 if entry.content:
-                    messages.append({"role": "user", "content": f"The customer service agent says: {entry.content}\n\nGenerate your response as the customer."})
+                    messages.append({"role": "user", "content": f"Agent: {entry.content}"})
             # Skip tool calls and tool results - they're internal to agent
         
-        # Add the current agent message we're responding to
-        messages.append({"role": "user", "content": f"The customer service agent says: {agent_message}\n\nGenerate your response as the customer."})
+        # Build the final prompt with the agent message we're responding to
+        final_prompt_parts = [f"Agent: {agent_message}"]
+        
+        # Add rejection context at the bottom if regenerating
+        if rejected_message and feedback:
+            final_prompt_parts.extend([
+                "",
+                "## IMPORTANT: Previous Response Rejected",
+                f"Your previous response was: \"{rejected_message}\"",
+                f"Feedback: {feedback}",
+                "",
+                "Generate a NEW response that addresses this feedback while maintaining your persona.",
+            ])
+        elif rejected_message:
+            final_prompt_parts.extend([
+                "",
+                "## IMPORTANT: Previous Response Rejected", 
+                f"Your previous response was: \"{rejected_message}\"",
+                "",
+                "Generate a different, improved response.",
+            ])
+        elif feedback:
+            final_prompt_parts.extend([
+                "",
+                f"## IMPORTANT GUIDANCE FOR THIS RESPONSE: {feedback}"
+            ])
+        
+        final_prompt_parts.append("\nGenerate your response as the customer.")
+        
+        messages.append({"role": "user", "content": "\n".join(final_prompt_parts)})
         
         try:
             # Build completion kwargs
@@ -1211,6 +1249,13 @@ class SimulatorCore:
         Returns:
             Parsed action dict with reasoning, action_type and relevant fields.
         """
+        if self.state.is_done:
+            return {
+                "error": "Simulation is already complete",
+                "action_type": None,
+                "reasoning": "The conversation has ended."
+            }
+        
         tools_summary = self._get_tools_summary()
         context = self._build_agent_context()
         
@@ -1421,6 +1466,204 @@ Please generate a DIFFERENT and BETTER action that addresses the operator's conc
         except Exception as e:
             print(f"[regenerate_action_with_feedback] Error: {type(e).__name__}: {e}")
             return None
+
+    def check_policy_compliance(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Check if a proposed agent action complies with the policy.
+        
+        Uses Policy AI (always gpt-5.2 for best quality) to evaluate whether 
+        the action confidently follows policy.
+        Returns approval if confident, or flags for human review if uncertain.
+        
+        Args:
+            action: The proposed action dict with action_type, content/tool_name, arguments, reasoning
+            
+        Returns:
+            Dict with:
+                - approved: bool - True if Policy AI confidently approves
+                - confidence: str - "high", "medium", or "low"
+                - reason: str - Explanation for the decision
+                - policy_concerns: list[str] - Any specific policy concerns identified
+                - model_used: str - The model used for evaluation
+                - timestamp: str - When the check was performed
+        """
+        import datetime
+        
+        # Always use gpt-5.2 for approval AI for best quality
+        APPROVER_MODEL = "gpt-5.2"
+        APPROVER_PROVIDER = "openai"
+        
+        # Build action description for the policy check
+        if action.get("action_type") == "respond":
+            action_desc = f"Text response to customer:\n\"{action.get('content', '')}\""
+        elif action.get("action_type") == "tool_call":
+            tool_name = action.get("tool_name", "unknown")
+            args = json.dumps(action.get("arguments", {}), indent=2)
+            action_desc = f"Tool call: {tool_name}\nArguments:\n{args}"
+        else:
+            action_desc = f"Action: {json.dumps(action, indent=2)}"
+        
+        reasoning = action.get("reasoning", "No reasoning provided")
+        
+        # Build context with FULL conversation history (not just last 10)
+        conv_history = []
+        for entry in self.state.conversation_history:  # Full history for complete context
+            if entry.role == "user":
+                conv_history.append(f"CUSTOMER: {entry.content or ''}")
+            elif entry.role == "agent":
+                if entry.tool_call:
+                    tc = entry.tool_call
+                    tool_args = json.dumps(tc.get('arguments', {}))
+                    conv_history.append(f"AGENT: [Called {tc['name']} with args: {tool_args}]")
+                else:
+                    conv_history.append(f"AGENT: {entry.content or ''}")
+            elif entry.role == "tool":
+                result = entry.content or ""
+                conv_history.append(f"TOOL RESULT: {result}")
+        
+        conv_context = "\n".join(conv_history) if conv_history else "No conversation history yet."
+        
+        # Log conversation history size for debugging
+        print(f"[check_policy_compliance] Conversation history: {len(self.state.conversation_history)} entries")
+        
+        system_prompt = f"""You are a Policy Compliance AI that reviews customer service agent actions in a SIMULATION environment.
+
+Your SOLE JOB is to determine if the proposed agent action complies with the POLICY given the AVAILABLE TOOLS.
+You must be CONFIDENT to approve. If there's ANY uncertainty about policy compliance, flag for human review.
+
+# ⚠️ CRITICAL: WHAT YOU MUST EVALUATE ⚠️
+- Does this action follow the PROCEDURES and RULES defined in the policy?
+- Is this action appropriate given the conversation context and customer request?
+- Is the agent using the available tools correctly according to policy?
+
+# ⚠️ CRITICAL: WHAT YOU MUST NOT EVALUATE ⚠️
+- DO NOT critique tool design, missing tool parameters, or tool limitations
+- DO NOT suggest improvements to the tools themselves
+- DO NOT flag issues about what tools "should" include or support
+- DO NOT comment on the system architecture or implementation
+- The tools are FIXED - evaluate only if the agent is USING them correctly per policy
+
+# Policy
+{self.env.wiki}
+
+# Conversation History (for context only - all previous actions were already approved)
+{conv_context}
+
+# ⚠️ NEW PROPOSED ACTION TO EVALUATE ⚠️
+{action_desc}
+
+# Agent's Reasoning for this NEW action
+{reasoning}
+
+# Your Task
+Evaluate ONLY whether the NEW PROPOSED ACTION complies with POLICY. Accept the tools AS-IS.
+
+Focus your analysis STRICTLY on:
+1. Does this action follow the required procedures in the policy?
+2. Is this action appropriate given the current conversation state?
+3. Is the agent using the correct tool with appropriate arguments for this situation?
+4. Are there any POLICY violations (NOT tool design critiques)?
+
+Respond with JSON only:
+```json
+{{
+    "approved": true/false,
+    "confidence": "high"/"medium"/"low",
+    "reason": "Brief explanation focused on POLICY compliance only",
+    "policy_concerns": ["List of POLICY concerns only - not tool design issues"],
+    "analysis": "Analysis of policy compliance - not tool critique"
+}}
+```
+
+Rules:
+- ONLY evaluate policy compliance - NOT tool design or limitations
+- Only approve with "high" confidence if the action clearly follows policy
+- If confidence is "medium" or "low", set approved to false
+- Be conservative - when in doubt, flag for human review
+- Look for: missing confirmations, skipped authentication, wrong procedures, inappropriate responses
+- DO NOT reject because a tool "doesn't include parameter X" - that's out of scope"""
+
+        try:
+            completion_kwargs = {
+                "model": APPROVER_MODEL,
+                "custom_llm_provider": APPROVER_PROVIDER,
+                "messages": [{"role": "user", "content": system_prompt}],
+            }
+            if not APPROVER_MODEL.startswith("gpt-5"):
+                completion_kwargs["temperature"] = 0.1  # Low temp for consistent evaluation
+            
+            # Log the complete prompt for debugging
+            print("\n" + "="*80)
+            print("[check_policy_compliance] COMPLETE PROMPT SENT TO APPROVAL AI:")
+            print("="*80)
+            print(system_prompt)
+            print("="*80 + "\n")
+            
+            _log_agent_generation(
+                operation="Policy Compliance Check",
+                model=APPROVER_MODEL,
+                provider=APPROVER_PROVIDER,
+                prompt_preview=f"Checking action: {action.get('action_type', 'unknown')} | History: {len(self.state.conversation_history)} entries"
+            )
+            
+            res = completion(**completion_kwargs)
+            response_text = res.choices[0].message.content.strip()
+            
+            _log_agent_generation(
+                operation="Policy Compliance Check - Result",
+                model=APPROVER_MODEL,
+                provider=APPROVER_PROVIDER,
+                response=response_text
+            )
+            
+            # Extract JSON from response
+            if "```json" in response_text:
+                json_start = response_text.find("```json") + 7
+                json_end = response_text.find("```", json_start)
+                response_text = response_text[json_start:json_end]
+            elif "```" in response_text:
+                json_start = response_text.find("```") + 3
+                json_end = response_text.find("```", json_start)
+                response_text = response_text[json_start:json_end]
+            
+            result = json.loads(response_text.strip())
+            
+            # Ensure required fields exist with timestamp and model info
+            return {
+                "approved": result.get("approved", False) and result.get("confidence") == "high",
+                "confidence": result.get("confidence", "low"),
+                "reason": result.get("reason", "No reason provided"),
+                "policy_concerns": result.get("policy_concerns", []),
+                "analysis": result.get("analysis", "No detailed analysis provided"),
+                "model_used": APPROVER_MODEL,
+                "timestamp": datetime.datetime.now().isoformat(),
+                "action_checked": action
+            }
+            
+        except json.JSONDecodeError as e:
+            print(f"[check_policy_compliance] JSON decode error: {e}")
+            return {
+                "approved": False,
+                "confidence": "low",
+                "reason": "Failed to parse policy check response",
+                "policy_concerns": ["Technical error in policy evaluation"],
+                "analysis": f"JSON parsing failed: {str(e)}",
+                "model_used": APPROVER_MODEL,
+                "timestamp": datetime.datetime.now().isoformat(),
+                "action_checked": action
+            }
+        except Exception as e:
+            print(f"[check_policy_compliance] Error: {type(e).__name__}: {e}")
+            return {
+                "approved": False,
+                "confidence": "low",
+                "reason": f"Policy check failed: {str(e)}",
+                "policy_concerns": ["Technical error in policy evaluation"],
+                "analysis": f"Error during evaluation: {type(e).__name__}: {str(e)}",
+                "model_used": APPROVER_MODEL,
+                "timestamp": datetime.datetime.now().isoformat(),
+                "action_checked": action
+            }
 
     def _build_agent_context(self) -> str:
         """Build context string for agent LLM assistance."""

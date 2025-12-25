@@ -45,6 +45,11 @@
   color: var(--muted);
 }
 
+.simulation-header .status-badge.editing {
+  background: rgba(234, 179, 8, 0.2);
+  color: #eab308;
+}
+
 /* On mobile, make simulation header fixed at top */
 @media (max-width: 768px) {
   .simulation-page {

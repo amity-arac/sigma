@@ -17,6 +17,7 @@ class EnvironmentFileInfo(BaseModel):
     size: int
     display_name: str
     description: str
+    editable: bool = True
 
 
 class EnvironmentFilesResponse(BaseModel):

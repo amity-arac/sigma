@@ -3,17 +3,59 @@ import { saveTrajectory } from '../services/api'
 
 const SessionContext = createContext(null)
 
+// Cookie helpers
+const getCookie = (name) => {
+  const value = `; ${document.cookie}`
+  const parts = value.split(`; ${name}=`)
+  if (parts.length === 2) return parts.pop().split(';').shift()
+  return null
+}
+
+const setCookie = (name, value, days = 365) => {
+  const expires = new Date()
+  expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000)
+  document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/;SameSite=Lax`
+}
+
 export function SessionProvider({ children }) {
   const [sessionId, setSessionId] = useState(null)
   const [isSimulationActive, setIsSimulationActive] = useState(false)
   const [tools, setTools] = useState([])
   const [persona, setPersona] = useState('')
   const [wiki, setWiki] = useState('')
+  const [injectedData, setInjectedData] = useState(null)  // Injected scenario data (augmented_data from persona_data)
   const [messages, setMessages] = useState([])
   const [stickyUserMessage, setStickyUserMessage] = useState('')
   const [finalResult, setFinalResult] = useState(null)
-  const [isAutopilotEnabled, setIsAutopilotEnabled] = useState(true)
+  
+  // Initialize from cookies
+  const [isAutopilotEnabled, setIsAutopilotEnabledState] = useState(() => {
+    const saved = getCookie('sigma_autopilot')
+    return saved === 'true'
+  })
+  const [isAutoApproveEnabled, setIsAutoApproveEnabledState] = useState(() => {
+    const saved = getCookie('sigma_autoapprove')
+    return saved === 'true'
+  })
+  
+  // Wrappers that save to cookies
+  const setIsAutopilotEnabled = useCallback((value) => {
+    const newValue = typeof value === 'function' ? value(isAutopilotEnabled) : value
+    setIsAutopilotEnabledState(newValue)
+    setCookie('sigma_autopilot', String(newValue))
+  }, [isAutopilotEnabled])
+  
+  const setIsAutoApproveEnabled = useCallback((value) => {
+    const newValue = typeof value === 'function' ? value(isAutoApproveEnabled) : value
+    setIsAutoApproveEnabledState(newValue)
+    setCookie('sigma_autoapprove', String(newValue))
+  }, [isAutoApproveEnabled])
+  
+  const [autopilotTurnCount, setAutopilotTurnCount] = useState(0)
   const [trajectoryId, setTrajectoryId] = useState(null)
+  
+  // Hard limit for autopilot turns to prevent infinite loops
+  const AUTOPILOT_TURN_LIMIT = 30
   const [isAutoSaving, setIsAutoSaving] = useState(false)
   const [lastSaveTime, setLastSaveTime] = useState(null)
   
@@ -122,25 +164,37 @@ export function SessionProvider({ children }) {
     setTools([])
     setPersona('')
     setWiki('')
+    setInjectedData(null)
     setMessages([])
     setStickyUserMessage('')
     setFinalResult(null)
-    setIsAutopilotEnabled(false)
+    // Don't reset autopilot/auto-approve - they're persisted in cookies
+    setAutopilotTurnCount(0)
     setTrajectoryId(null)
     setIsAutoSaving(false)
     setLastSaveTime(null)
     lastSavedMessagesRef.current = null
+    lastSavedStateRef.current = null
   }, [])
 
+  // Ref to track last saved state (messages + finalResult)
+  const lastSavedStateRef = useRef(null)
+
   // Mark current messages as already saved (used when restoring a trajectory)
-  const markMessagesSaved = useCallback((messagesToMark) => {
+  const markMessagesSaved = useCallback((messagesToMark, savedFinalResult = null) => {
     const nonTempMessages = messagesToMark.filter(m => !m.isTemporary)
     const messagesKey = JSON.stringify(nonTempMessages.map(m => m.id))
     lastSavedMessagesRef.current = messagesKey
-    console.log('[markMessagesSaved] Marked', nonTempMessages.length, 'messages as saved')
+    // Also update the state ref to prevent immediate re-save
+    lastSavedStateRef.current = JSON.stringify({
+      messageIds: nonTempMessages.map(m => m.id),
+      isDone: savedFinalResult?.is_done || false,
+      reward: savedFinalResult?.reward
+    })
+    console.log('[markMessagesSaved] Marked', nonTempMessages.length, 'messages as saved, isDone:', savedFinalResult?.is_done)
   }, [])
 
-  // Auto-save effect - debounced save whenever messages change
+  // Auto-save effect - debounced save whenever messages or finalResult change
   useEffect(() => {
     // Don't auto-save if no session or no messages
     if (!sessionId || messages.length === 0) {
@@ -153,9 +207,16 @@ export function SessionProvider({ children }) {
       return
     }
     
-    // Check if messages actually changed (compare stringified versions)
-    const messagesKey = JSON.stringify(nonTempMessages.map(m => m.id))
-    if (lastSavedMessagesRef.current === messagesKey) {
+    // Build a state key that includes both messages AND finalResult
+    // This ensures we save when simulation completes (finalResult changes)
+    const stateKey = JSON.stringify({
+      messageIds: nonTempMessages.map(m => m.id),
+      isDone: finalResult?.is_done || false,
+      reward: finalResult?.reward
+    })
+    
+    // Check if state actually changed
+    if (lastSavedStateRef.current === stateKey) {
       return
     }
     
@@ -163,6 +224,10 @@ export function SessionProvider({ children }) {
     if (autoSaveTimeoutRef.current) {
       clearTimeout(autoSaveTimeoutRef.current)
     }
+    
+    // Capture current values for the async callback
+    const currentFinalResult = finalResult
+    const currentStateKey = stateKey
     
     // Debounce: save after 2 seconds of no changes
     autoSaveTimeoutRef.current = setTimeout(async () => {
@@ -172,14 +237,16 @@ export function SessionProvider({ children }) {
         const result = await saveTrajectory(
           sessionId,
           nonTempMessages,
-          finalResult || {}
+          currentFinalResult || {}
         )
         
         if (result.success) {
           setTrajectoryId(result.trajectory_id)
           setLastSaveTime(new Date())
-          lastSavedMessagesRef.current = messagesKey
-          console.log('[Auto-save] Trajectory saved:', result.trajectory_id)
+          lastSavedStateRef.current = currentStateKey
+          // Also update message ref for backward compatibility
+          lastSavedMessagesRef.current = JSON.stringify(nonTempMessages.map(m => m.id))
+          console.log('[Auto-save] Trajectory saved:', result.trajectory_id, 'isDone:', currentFinalResult?.is_done)
         } else {
           console.error('[Auto-save] Failed:', result.error)
         }
@@ -209,6 +276,8 @@ export function SessionProvider({ children }) {
     setPersona,
     wiki,
     setWiki,
+    injectedData,
+    setInjectedData,
     messages,
     setMessages,
     stickyUserMessage,
@@ -224,6 +293,11 @@ export function SessionProvider({ children }) {
     markMessagesSaved,
     isAutopilotEnabled,
     setIsAutopilotEnabled,
+    isAutoApproveEnabled,
+    setIsAutoApproveEnabled,
+    autopilotTurnCount,
+    setAutopilotTurnCount,
+    AUTOPILOT_TURN_LIMIT,
     // Auto-save state
     trajectoryId,
     setTrajectoryId,

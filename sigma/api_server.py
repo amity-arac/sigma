@@ -13,12 +13,14 @@ Usage:
     uvicorn sigma.api_server:app --reload --host 0.0.0.0 --port 8000
 """
 
+import asyncio
 import json
 import os
 import traceback
 from contextlib import asynccontextmanager
+from functools import partial
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,7 +34,7 @@ from sigma.simulator_core import (
     get_available_environments,
     load_persona_file,
 )
-from sigma.env_registry import get_environment_config, list_environments
+from sigma.env_registry import get_environment_config, list_environments, refresh_environment_registry
 from sigma.envs import (
     DATA_ENVS_PATH,
     EnvironmentInfo,
@@ -44,6 +46,9 @@ from sigma.envs import (
     list_env_files,
     get_env_file,
     update_env_file,
+    duplicate_env,
+    rename_env,
+    delete_env,
 )
 from sigma.trajectory_storage import (
     TrajectoryStorage,
@@ -122,7 +127,8 @@ class ParseActionRequest(BaseModel):
 
 class RollbackRequest(BaseModel):
     """Request to rollback conversation to a specific point."""
-    target_index: int  # The index in conversation history to rollback to (exclusive)
+    target_index: Optional[int] = None  # DEPRECATED: The index in conversation history to rollback to
+    message_id: Optional[str] = None  # The message ID to rollback to (removes this message and all after)
 
 
 class RegenerateUserRequest(BaseModel):
@@ -135,6 +141,19 @@ class RegenerateActionRequest(BaseModel):
     """Request to regenerate agent action with feedback on rejected action."""
     rejected_action: Dict[str, Any]  # The rejected action (action_type, content, tool_name, arguments, reasoning)
     feedback: Optional[str] = None  # User feedback on why the action was rejected
+
+
+class CheckPolicyComplianceRequest(BaseModel):
+    """Request to check if an action complies with policy."""
+    action: Dict[str, Any]  # The action to check (action_type, content, tool_name, arguments, reasoning)
+
+
+class PolicyComplianceResponse(BaseModel):
+    """Response from policy compliance check."""
+    approved: bool  # True if Policy AI confidently approves
+    confidence: str  # "high", "medium", or "low"
+    reason: str  # Explanation for the decision
+    policy_concerns: List[str]  # Any specific policy concerns identified
 
 
 class ActionResultResponse(BaseModel):
@@ -152,6 +171,7 @@ class ConversationEntry(BaseModel):
     role: str
     content: Optional[str] = None
     tool_call: Optional[Dict[str, Any]] = None
+    id: Optional[str] = None  # Unique message ID for idempotent operations
 
 
 class ConversationHistoryResponse(BaseModel):
@@ -215,12 +235,19 @@ class ContinueTrajectoryResponse(BaseModel):
     wiki: str
     messages: List[Dict[str, Any]]  # Previous messages to restore
     is_done: bool
+    persona_data: Optional[Dict[str, Any]] = None  # Full persona data including augmented_data (injected scenario data)
 
 
 class UpdateTrajectoryRequest(BaseModel):
     """Request to update a trajectory."""
     is_done: Optional[bool] = None
     reward: Optional[float] = None
+
+
+class EditMessageRequest(BaseModel):
+    """Request to edit a single message content in a trajectory."""
+    message_id: Union[str, float, int]  # The ID of the message to edit (accepts string or number)
+    content: str  # The new content for the message
 
 
 # ExportTrajectoryRequest and ExportTrajectoryResponse are imported from sigma.exports
@@ -572,6 +599,70 @@ async def update_environment_file_route(env_name: str, filename: str, request: U
     return {"success": True, "message": f"File '{filename}' updated successfully"}
 
 
+class DuplicateEnvironmentRequest(BaseModel):
+    """Request to duplicate an environment."""
+    new_name: str
+
+
+class RenameEnvironmentRequest(BaseModel):
+    """Request to rename an environment."""
+    new_name: str
+
+
+@app.post("/environments/{env_name}/duplicate")
+async def duplicate_environment_route(env_name: str, request: DuplicateEnvironmentRequest):
+    """Duplicate an environment with a new name."""
+    success, error = duplicate_env(env_name, request.new_name)
+    if not success:
+        if "not found" in error:
+            raise HTTPException(status_code=404, detail=error)
+        elif "already exists" in error:
+            raise HTTPException(status_code=409, detail=error)
+        else:
+            raise HTTPException(status_code=400, detail=error)
+    
+    # Refresh environment registry to detect the new environment
+    refresh_environment_registry()
+    
+    return {"success": True, "message": f"Environment '{env_name}' duplicated to '{request.new_name}'"}
+
+
+@app.put("/environments/{env_name}/rename")
+async def rename_environment_route(env_name: str, request: RenameEnvironmentRequest):
+    """Rename an environment."""
+    success, error = rename_env(env_name, request.new_name)
+    if not success:
+        if "not found" in error:
+            raise HTTPException(status_code=404, detail=error)
+        elif "already exists" in error:
+            raise HTTPException(status_code=409, detail=error)
+        else:
+            raise HTTPException(status_code=400, detail=error)
+    
+    # Refresh environment registry to update the renamed environment
+    refresh_environment_registry()
+    
+    return {"success": True, "message": f"Environment '{env_name}' renamed to '{request.new_name}'"}
+
+
+@app.delete("/environments/{env_name}")
+async def delete_environment_route(env_name: str):
+    """Delete an environment."""
+    success, error = delete_env(env_name)
+    if not success:
+        if "not found" in error:
+            raise HTTPException(status_code=404, detail=error)
+        elif "last remaining" in error:
+            raise HTTPException(status_code=400, detail=error)
+        else:
+            raise HTTPException(status_code=400, detail=error)
+    
+    # Refresh environment registry to remove the deleted environment
+    refresh_environment_registry()
+    
+    return {"success": True, "message": f"Environment '{env_name}' deleted"}
+
+
 # =============================================================================
 # Routes - Sessions
 # =============================================================================
@@ -648,7 +739,8 @@ async def start_session(session_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
     
     try:
-        initial_message = simulator.start()
+        # Run blocking LLM operation in thread pool
+        initial_message = await asyncio.to_thread(simulator.start)
         
         # Convert tools to dict format
         tools = [
@@ -667,8 +759,7 @@ async def start_session(session_id: str):
             generated_scenario = {
                 "instruction": simulator.generated_scenario.instruction,
                 "user": simulator.generated_scenario.user,
-                "data": simulator.generated_scenario.data,
-                "data_key": simulator.generated_scenario.data_key,
+                "augmented_data": simulator.generated_scenario.augmented_data,
                 "seed_task_instruction": simulator.generated_scenario.seed_task_instruction,
                 "generation_timestamp": simulator.generated_scenario.generation_timestamp,
                 "env_name": simulator.generated_scenario.env_name,
@@ -697,7 +788,8 @@ async def respond_to_user(session_id: str, request: RespondRequest):
     if not simulator:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    result = simulator.respond_to_user(request.message)
+    # Run blocking LLM operation in thread pool
+    result = await asyncio.to_thread(simulator.respond_to_user, request.message)
     
     return ActionResultResponse(
         success=result.success,
@@ -716,7 +808,8 @@ async def call_tool(session_id: str, request: ToolCallRequest):
     if not simulator:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    result = simulator.call_tool(request.tool_name, request.arguments)
+    # Run blocking operation in thread pool
+    result = await asyncio.to_thread(simulator.call_tool, request.tool_name, request.arguments)
     
     return ActionResultResponse(
         success=result.success,
@@ -735,7 +828,8 @@ async def generate_response(session_id: str, request: GenerateResponseRequest):
     if not simulator:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    response = simulator.generate_response(request.prompt)
+    # Run blocking LLM operation in thread pool
+    response = await asyncio.to_thread(simulator.generate_response, request.prompt)
     if response is None:
         raise HTTPException(status_code=500, detail="Failed to generate response")
     
@@ -749,7 +843,8 @@ async def parse_action(session_id: str, request: ParseActionRequest):
     if not simulator:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    parsed = simulator.parse_natural_language_action(request.user_input)
+    # Run blocking LLM operation in thread pool
+    parsed = await asyncio.to_thread(simulator.parse_natural_language_action, request.user_input)
     if parsed is None:
         raise HTTPException(
             status_code=400, 
@@ -772,12 +867,23 @@ async def undo_last_action(session_id: str):
 
 @app.post("/sessions/{session_id}/rollback")
 async def rollback_to_point(session_id: str, request: RollbackRequest):
-    """Rollback conversation to a specific point (removing all messages after target_index)."""
+    """Rollback conversation to a specific point (removing the target message and all after)."""
     simulator = session_manager.get_session(session_id)
     if not simulator:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    result = simulator.rollback_to_index(request.target_index)
+    # Prefer message_id for idempotent operations, fall back to target_index for backwards compatibility
+    if request.message_id:
+        result = simulator.rollback_to_message_id(request.message_id)
+    elif request.target_index is not None:
+        result = simulator.rollback_to_index(request.target_index)
+    else:
+        return {
+            "success": False,
+            "error": "Either message_id or target_index must be provided",
+            "removed_count": 0,
+            "remaining_count": len(simulator.state.conversation_history)
+        }
     return result
 
 
@@ -788,9 +894,11 @@ async def regenerate_user_response(session_id: str, request: RegenerateUserReque
     if not simulator:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    result = simulator.regenerate_user_response(
-        rejected_message=request.rejected_message,
-        feedback=request.feedback
+    # Run blocking LLM operation in thread pool
+    result = await asyncio.to_thread(
+        simulator.regenerate_user_response,
+        request.rejected_message,
+        request.feedback
     )
     return result
 
@@ -802,9 +910,11 @@ async def regenerate_action(session_id: str, request: RegenerateActionRequest):
     if not simulator:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    result = simulator.regenerate_action_with_feedback(
-        rejected_action=request.rejected_action,
-        feedback=request.feedback
+    # Run blocking LLM operation in thread pool
+    result = await asyncio.to_thread(
+        simulator.regenerate_action_with_feedback,
+        request.rejected_action,
+        request.feedback
     )
     if result is None:
         raise HTTPException(
@@ -812,6 +922,27 @@ async def regenerate_action(session_id: str, request: RegenerateActionRequest):
             detail="Could not regenerate action. Check server logs for details."
         )
     return result
+
+
+@app.post("/sessions/{session_id}/check-policy", response_model=PolicyComplianceResponse)
+async def check_policy_compliance(session_id: str, request: CheckPolicyComplianceRequest):
+    """
+    Check if a proposed agent action complies with the policy.
+    
+    Uses Policy AI to evaluate whether the action confidently follows policy.
+    Returns approval if confident, or flags for human review if uncertain.
+    
+    This endpoint is used by the auto-approve feature to automatically approve
+    actions that clearly comply with policy, while flagging uncertain cases
+    for human review.
+    """
+    simulator = session_manager.get_session(session_id)
+    if not simulator:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Run blocking LLM operation in thread pool
+    result = await asyncio.to_thread(simulator.check_policy_compliance, request.action)
+    return PolicyComplianceResponse(**result)
 
 
 # =============================================================================
@@ -830,6 +961,7 @@ async def get_conversation_history(session_id: str):
             role=e.role,
             content=e.content,
             tool_call=e.tool_call,
+            id=e.id,
         )
         for e in simulator.conversation_history
     ]
@@ -1076,6 +1208,36 @@ class CreateTrajectoryResponse(BaseModel):
     generated_scenario: Optional[Dict[str, Any]] = None
 
 
+def _create_and_start_simulator(
+    session_manager: SimulatorSessionManager,
+    env_name: str,
+    user_model: str,
+    user_provider: str,
+    agent_model: str = None,
+    agent_provider: str = None,
+    persona: str = None,
+    task_index: int = None,
+    task_split: str = "test",
+    generate_scenario: bool = True,
+    task_ids: List[int] = None,
+):
+    """Synchronous helper to create and start simulator (runs in thread pool)."""
+    simulator = session_manager.create_session(
+        env_name=env_name,
+        user_model=user_model,
+        user_provider=user_provider,
+        agent_model=agent_model,
+        agent_provider=agent_provider,
+        persona=persona,
+        task_index=task_index,
+        task_split=task_split,
+        generate_scenario=generate_scenario,
+        task_ids=task_ids,
+    )
+    initial_message = simulator.start()
+    return simulator, initial_message
+
+
 @app.post("/trajectories", response_model=CreateTrajectoryResponse)
 async def create_trajectory(request: CreateTrajectoryRequest):
     """
@@ -1093,22 +1255,21 @@ async def create_trajectory(request: CreateTrajectoryRequest):
     - PUT /trajectories/{id} - Save/update trajectory
     """
     try:
-        # Create simulator
-        simulator = session_manager.create_session(
-            env_name=request.env_name,
-            user_model=request.user_model,
-            user_provider=request.user_provider,
-            agent_model=request.agent_model,
-            agent_provider=request.agent_provider,
-            persona=request.persona,
-            task_index=request.task_index,
-            task_split=request.task_split,
-            generate_scenario=request.generate_scenario,
-            task_ids=request.task_ids,
+        # Run blocking LLM operations in thread pool to avoid blocking event loop
+        simulator, initial_message = await asyncio.to_thread(
+            _create_and_start_simulator,
+            session_manager,
+            request.env_name,
+            request.user_model,
+            request.user_provider,
+            request.agent_model,
+            request.agent_provider,
+            request.persona,
+            request.task_index,
+            request.task_split,
+            request.generate_scenario,
+            request.task_ids,
         )
-        
-        # Start simulation to get initial message
-        initial_message = simulator.start()
         
         # Convert tools to dict format
         tools = [
@@ -1264,7 +1425,8 @@ async def trajectory_respond(trajectory_id: str, request: RespondRequest):
     """
     try:
         simulator = get_simulator_for_trajectory(trajectory_id)
-        result = simulator.send_response(request.message)
+        # Run blocking LLM operation in thread pool
+        result = await asyncio.to_thread(simulator.send_response, request.message)
         
         return ActionResultResponse(
             success=True,
@@ -1291,7 +1453,8 @@ async def trajectory_tool_call(trajectory_id: str, request: ToolCallRequest):
     """
     try:
         simulator = get_simulator_for_trajectory(trajectory_id)
-        result = simulator.call_tool(request.tool_name, request.arguments)
+        # Run blocking operation in thread pool
+        result = await asyncio.to_thread(simulator.call_tool, request.tool_name, request.arguments)
         
         return ActionResultResponse(
             success=True,
@@ -1318,7 +1481,8 @@ async def trajectory_parse_action(trajectory_id: str, request: ParseActionReques
     """
     try:
         simulator = get_simulator_for_trajectory(trajectory_id)
-        action = simulator.parse_action(request.user_input)
+        # Run blocking LLM operation in thread pool
+        action = await asyncio.to_thread(simulator.parse_action, request.user_input)
         
         return {
             "action_type": action.action_type.value if hasattr(action.action_type, 'value') else action.action_type,
@@ -1340,19 +1504,30 @@ async def trajectory_rollback(trajectory_id: str, request: RollbackRequest):
     """
     try:
         simulator = get_simulator_for_trajectory(trajectory_id)
-        removed_count = simulator.rollback(request.target_index)
+        
+        # Prefer message_id for idempotent operations, fall back to target_index for backwards compatibility
+        if request.message_id:
+            result = simulator.rollback_to_message_id(request.message_id)
+        elif request.target_index is not None:
+            result = simulator.rollback_to_index(request.target_index)
+        else:
+            return {
+                "success": False,
+                "error": "Either message_id or target_index must be provided",
+                "removed_count": 0,
+                "new_length": len(simulator.state.conversation_history),
+            }
         
         # Re-enable simulation if it was done
-        if simulator.state.is_done:
+        if result.get("success") and simulator.state.is_done:
             simulator.state.is_done = False
             simulator.state.last_reward = None
             simulator.state.reward_info = None
         
-        return {
-            "success": True,
-            "removed_count": removed_count,
-            "new_length": len(simulator.state.conversation_history),
-        }
+        # Add new_length to response for backwards compatibility
+        result["new_length"] = result.get("remaining_count", len(simulator.state.conversation_history))
+        
+        return result
     except HTTPException:
         raise
     except Exception as e:
@@ -1366,9 +1541,11 @@ async def trajectory_regenerate_user(trajectory_id: str, request: RegenerateUser
     """
     try:
         simulator = get_simulator_for_trajectory(trajectory_id)
-        new_response = simulator.regenerate_user_response(
-            rejected_message=request.rejected_message,
-            feedback=request.feedback
+        # Run blocking LLM operation in thread pool
+        new_response = await asyncio.to_thread(
+            simulator.regenerate_user_response,
+            request.rejected_message,
+            request.feedback
         )
         
         return {
@@ -1379,6 +1556,81 @@ async def trajectory_regenerate_user(trajectory_id: str, request: RegenerateUser
         raise
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+@app.patch("/trajectories/{trajectory_id}/messages/{message_id}")
+async def edit_trajectory_message(trajectory_id: str, message_id: str, request: EditMessageRequest):
+    """
+    Edit a single message's content in a trajectory.
+    
+    This allows editing any user or agent message content without rollback
+    or any other side effects. Works even on completed trajectories.
+    """
+    try:
+        storage = get_trajectory_storage()
+        
+        # Find the trajectory in any environment
+        trajectory_dict = None
+        env_name = None
+        for env in list_environments():
+            trajectory_dict = storage.get(trajectory_id, env)
+            if trajectory_dict:
+                env_name = env
+                break
+        
+        if not trajectory_dict:
+            raise HTTPException(status_code=404, detail="Trajectory not found")
+        
+        # Convert message_id for comparison - handle both string and numeric IDs
+        # Use the path parameter message_id as primary, fall back to request body
+        target_message_id = message_id  # from path parameter (already a string)
+        request_message_id = str(request.message_id) if request.message_id else target_message_id
+        
+        # Find and update the message
+        messages = trajectory_dict.get('messages', [])
+        message_found = False
+        for msg in messages:
+            msg_id = msg.get('id')
+            msg_id_str = str(msg_id) if msg_id is not None else None
+            
+            # Try multiple matching approaches to handle float precision issues
+            if (msg_id_str == target_message_id or 
+                msg_id_str == request_message_id or
+                msg_id == target_message_id or
+                (isinstance(msg_id, (int, float)) and abs(float(msg_id) - float(target_message_id)) < 0.0001)):
+                # Only allow editing user and agent messages
+                if msg.get('role') not in ['user', 'agent']:
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"Cannot edit message with role '{msg.get('role')}'. Only user and agent messages can be edited."
+                    )
+                msg['content'] = request.content
+                message_found = True
+                break
+        
+        if not message_found:
+            # Provide more helpful error message with available message IDs
+            available_ids = [str(msg.get('id')) for msg in messages[:10]]  # First 10 IDs
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Message not found. Looking for '{target_message_id}'. Available IDs (first 10): {available_ids}"
+            )
+        
+        # Save the updated messages using the update method
+        success = storage.update(trajectory_id, env_name, {"messages": messages})
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update trajectory")
+        
+        return {
+            "success": True,
+            "message": "Message updated successfully",
+            "trajectory_id": trajectory_id,
+            "message_id": message_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/trajectories/{trajectory_id}/tools")
@@ -1495,6 +1747,28 @@ async def trajectory_save_messages(trajectory_id: str, request: SaveTrajectoryRe
         )
 
 
+def _create_from_trajectory_sync(
+    session_manager: SimulatorSessionManager,
+    trajectory: TrajectoryData,
+    user_model: str,
+    user_provider: str,
+    agent_model: str = None,
+    agent_provider: str = None,
+):
+    """Synchronous helper to create simulator from trajectory (runs in thread pool)."""
+    simulator = session_manager.create_from_trajectory(
+        trajectory=trajectory,
+        user_model=user_model,
+        user_provider=user_provider,
+        agent_model=agent_model,
+        agent_provider=agent_provider,
+    )
+    # Start the session if conversation is empty
+    if not simulator.state.conversation_history:
+        simulator.start()
+    return simulator
+
+
 @app.post("/trajectories/{trajectory_id}/continue", response_model=ContinueTrajectoryResponse)
 async def continue_trajectory(trajectory_id: str, request: ContinueTrajectoryRequest):
     """
@@ -1555,21 +1829,17 @@ async def continue_trajectory(trajectory_id: str, request: ContinueTrajectoryReq
             expected_actions=trajectory_dict.get('expected_actions'),
         )
         
-        # Use the clean from_trajectory approach
+        # Use the clean from_trajectory approach in thread pool to avoid blocking
         # This properly handles persona_data injection including augmented_data
-        simulator = session_manager.create_from_trajectory(
-            trajectory=trajectory,
-            user_model=request.user_model,
-            user_provider=request.user_provider,
-            agent_model=request.agent_model,
-            agent_provider=request.agent_provider,
+        simulator = await asyncio.to_thread(
+            _create_from_trajectory_sync,
+            session_manager,
+            trajectory,
+            request.user_model,
+            request.user_provider,
+            request.agent_model,
+            request.agent_provider,
         )
-        
-        # Start the session (generates initial user message for fresh sessions,
-        # but for restored sessions we already have the conversation)
-        # Only start if conversation is empty (fresh session)
-        if not simulator.state.conversation_history:
-            simulator.start()
         
         # Convert tools to dict format
         tools = [
@@ -1599,6 +1869,7 @@ async def continue_trajectory(trajectory_id: str, request: ContinueTrajectoryReq
             wiki=trajectory.wiki,
             messages=messages_data,
             is_done=trajectory.is_done,
+            persona_data=trajectory.persona_data,
         )
         
     except HTTPException:
@@ -1983,17 +2254,22 @@ def main():
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
     parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
+    parser.add_argument("--workers", type=int, default=1, help="Number of worker processes (use 1 with --reload)")
     
     args = parser.parse_args()
     
     # Create static directory if it doesn't exist
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     
+    # Note: workers > 1 is incompatible with --reload
+    # For development, use --reload with 1 worker
+    # For production, use --workers 4 (or more) without --reload
     uvicorn.run(
         "sigma.api_server:app",
         host=args.host,
         port=args.port,
         reload=args.reload,
+        workers=1 if args.reload else args.workers,
     )
 
 

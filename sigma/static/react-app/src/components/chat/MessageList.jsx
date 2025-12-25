@@ -1,7 +1,7 @@
 import Message from './Message'
 import './MessageList.css'
 
-function MessageList({ messages, onRollback, onRegenerateUser, onRemoveRejected, isSimulationActive, isConversationEnded, onNewSession }) {
+function MessageList({ messages, onRollback, onRegenerateUser, onEditMessage, onRemoveRejected, isSimulationActive, isConversationEnded, onNewSession, wasOriginallyCompleted }) {
   // Check if the last user message contains ###STOP### to determine if conversation has ended
   const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')
   const hasStopSignal = lastUserMessage && lastUserMessage.content?.includes('###STOP###')
@@ -16,17 +16,19 @@ function MessageList({ messages, onRollback, onRegenerateUser, onRemoveRejected,
       {messages.map((message, index) => (
         <Message 
           key={message.id}
+          messageId={message.id}
           role={message.role}
           content={message.content}
           reasoning={message.reasoning}
           rejected={message.rejected}
           isTemporary={message.isTemporary}
           messageIndex={index}
-          messageId={message.id}
           onRollback={onRollback}
           onRegenerateUser={onRegenerateUser}
+          onEditMessage={onEditMessage}
           onRemoveRejected={onRemoveRejected}
           isSimulationActive={isSimulationActive}
+          wasOriginallyCompleted={wasOriginallyCompleted}
         />
       ))}
       

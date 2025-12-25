@@ -1,0 +1,109 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sigma-simulator"
+version = "0.1.0"
+description = "Scenario Simulator for tau-bench - Interactive simulation tool for agent training and evaluation"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Amity", email = "opensource@amity.co"}
+]
+keywords = [
+    "llm",
+    "simulation",
+    "agent",
+    "training",
+    "tau-bench",
+    "customer-service",
+    "reinforcement-learning",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "litellm>=1.0.0",
+    "rich>=13.0.0",
+    "pydantic>=2.0.0",
+    "openai>=1.0.0",
+]
+
+[project.optional-dependencies]
+web = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.20.0",
+    "websockets>=11.0.0",
+]
+storage = [
+    "azure-cosmos>=4.5.0",
+    "azure-storage-blob>=12.0.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+all = [
+    "sigma-simulator[web,storage,dev]",
+]
+
+[project.urls]
+Homepage = "https://github.com/AmityCo/sigma"
+Documentation = "https://github.com/AmityCo/sigma#readme"
+Repository = "https://github.com/AmityCo/sigma"
+Issues = "https://github.com/AmityCo/sigma/issues"
+
+[project.scripts]
+sigma = "sigma.cli_simulator:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sigma*", "data*"]
+
+[tool.setuptools.package-data]
+sigma = [
+    "prompts/*.md",
+    "static/**/*",
+]
+data = [
+    "envs/**/*.json",
+    "envs/**/*.md",
+    "envs/**/*.py",
+]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

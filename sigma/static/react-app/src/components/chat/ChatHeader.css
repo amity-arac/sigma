@@ -57,16 +57,21 @@
 .autopilot-toggle {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 12px;
+  gap: 6px;
+  padding: 4px 10px;
   background: var(--bg-secondary);
   border-radius: 20px;
   border: 1px solid var(--border-color);
+  cursor: help;
+  transition: border-color 0.2s ease;
+}
+
+.autopilot-toggle:hover {
+  border-color: var(--accent-green);
 }
 
 .autopilot-label {
   font-size: 0.85em;
-  font-weight: 500;
   color: var(--text-primary);
 }
 
@@ -117,6 +122,79 @@
 
 .toggle-switch input:focus + .toggle-slider {
   box-shadow: 0 0 1px var(--accent-green);
+}
+
+/* Turn Counter */
+.turn-counter {
+  margin-left: 6px;
+  padding: 2px 8px;
+  background: rgba(33, 150, 243, 0.15);
+  color: #2196f3;
+  border-radius: 10px;
+  font-size: 0.75em;
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.turn-counter.warning {
+  background: rgba(255, 152, 0, 0.2);
+  color: #f57c00;
+  animation: pulse-warning 1s infinite;
+}
+
+@keyframes pulse-warning {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Auto-approve Toggle */
+.auto-approve-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg-secondary);
+  border-radius: 20px;
+  border: 1px solid var(--border-color);
+  cursor: help;
+  transition: border-color 0.2s ease;
+}
+
+.auto-approve-toggle:hover:not(.disabled) {
+  border-color: #673ab7;
+}
+
+.auto-approve-toggle.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.auto-approve-toggle.disabled .toggle-slider {
+  cursor: not-allowed;
+}
+
+.auto-approve-label {
+  font-size: 0.85em;
+  color: var(--text-primary);
+}
+
+/* Approval Log Button */
+.approval-log-btn {
+  margin-left: 6px;
+  padding: 2px 8px;
+  background: rgba(103, 58, 183, 0.15);
+  color: #673ab7;
+  border: 1px solid rgba(103, 58, 183, 0.3);
+  border-radius: 10px;
+  font-size: 0.75em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.approval-log-btn:hover {
+  background: rgba(103, 58, 183, 0.25);
+  border-color: rgba(103, 58, 183, 0.5);
 }
 
 /* Auto-save Status */
@@ -183,8 +261,9 @@
     gap: 4px;
   }
   
-  .autopilot-label-text {
-    display: none;
+  .auto-approve-toggle {
+    padding: 4px 8px;
+    gap: 4px;
   }
   
   .toggle-switch {
@@ -228,12 +307,8 @@
 /* Hide redundant controls on mobile - they're in the floating panel now */
 @media (max-width: 1000px) {
   .chat-header-right .autopilot-toggle,
-  .chat-header-right .auto-save-status,
-  .chat-header-right .btn-new-trajectory {
-    display: none;
-  }
-  
-  .chat-header-left .status-badge {
+  .chat-header-right .auto-approve-toggle,
+  .chat-header-right .auto-save-status {
     display: none;
   }
   

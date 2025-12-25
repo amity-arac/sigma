@@ -30,8 +30,10 @@ function Message({
   messageId,
   onRollback,
   onRegenerateUser,
+  onEditMessage,
   onRemoveRejected,
-  isSimulationActive
+  isSimulationActive,
+  wasOriginallyCompleted
 }) {
   const [showReasoning, setShowReasoning] = useState(false)
   const [showRejectedDetails, setShowRejectedDetails] = useState(false)
@@ -44,16 +46,24 @@ function Message({
     setShowRejectedDetails(prev => !prev)
   }
 
-  // Determine if this message should show rollback button (only agent response and tool call)
-  const showRollbackButton = isSimulationActive && 
+  // Determine if this message should show rollback/regenerate button (agent response and tool call)
+  // Allow regeneration on completed trajectories too - the handler will show a warning
+  const showRollbackButton = (isSimulationActive || wasOriginallyCompleted) && 
     (role === 'agent' || role === 'tool') && 
     onRollback && 
     messageIndex !== undefined
 
   // Determine if this message should show refresh button (user messages)
-  const showRefreshButton = isSimulationActive && 
+  // Allow regeneration on completed trajectories too - the handler will show a warning
+  const showRefreshButton = (isSimulationActive || wasOriginallyCompleted) && 
     role === 'user' && 
     onRegenerateUser && 
+    messageIndex !== undefined
+
+  // Determine if this message should show edit button (user and agent messages only, not tool/tool-result)
+  // Edit is allowed even on completed conversations
+  const showEditButton = (role === 'user' || role === 'agent') && 
+    onEditMessage && 
     messageIndex !== undefined
 
   // Determine if this is a rejected message that can be removed
@@ -87,6 +97,15 @@ function Message({
           </button>
         )}
         <div className="message-actions">
+          {showEditButton && (
+            <button 
+              className="message-action-btn edit-btn"
+              onClick={() => onEditMessage(messageIndex, role, content)}
+              title="Edit this message"
+            >
+              ✏️
+            </button>
+          )}
           {showRefreshButton && (
             <button 
               className="message-action-btn refresh-btn"
@@ -100,9 +119,9 @@ function Message({
             <button 
               className="message-action-btn rollback-btn"
               onClick={() => onRollback(messageIndex)}
-              title="Rollback conversation to before this message"
+              title="Regenerate from this point"
             >
-              ✕
+              🔄
             </button>
           )}
           {showRemoveButton && (
@@ -163,7 +182,7 @@ function Message({
         ) : isRejectedMessage ? (
           <span className="rejected-summary">
             Rejected {rejectedType}
-            {!showRejectedDetails && <span className="hint"> (click "Show Details" to see more)</span>}
+            {rejected && !showRejectedDetails && <span className="hint"> (click "Show Details" to see more)</span>}
           </span>
         ) : (
           content

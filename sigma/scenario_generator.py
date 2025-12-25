@@ -34,14 +34,12 @@ class GeneratedScenario:
     """A generated scenario with all required data."""
     instruction: str
     user: Dict[str, Any]
-    data: Dict[str, Any]  # orders/reservations/etc based on env
-    data_key: str  # "orders", "reservations", etc.
     seed_task_instruction: str  # The original task that inspired this scenario
     generation_timestamp: str
     env_name: str
     user_id: str = ""  # Generated user_id for GRPO training data
     scenario_goal: str = ""  # Overall expected outcome of this scenario
-    augmented_data: Dict[str, Any] = field(default_factory=dict)  # Additional data to inject (products, flights, etc.)
+    augmented_data: Dict[str, Any] = field(default_factory=dict)  # ALL data to inject (orders, reservations, products, flights, etc.)
     seed_task_id: Optional[str] = None  # The ID of the original task that inspired this scenario
     
     def to_dict(self) -> Dict[str, Any]:
@@ -50,8 +48,6 @@ class GeneratedScenario:
             "instruction": self.instruction,
             "user": self.user,
             "user_id": self.user_id,
-            "data": self.data,
-            "data_key": self.data_key,
             "seed_task_instruction": self.seed_task_instruction,
             "seed_task_id": self.seed_task_id,
             "generation_timestamp": self.generation_timestamp,
@@ -98,9 +94,11 @@ class ScenarioGenerator:
         self._tasks: List[Dict[str, Any]] = []
         self._env_data: Dict[str, Any] = {}
         self._policy: str = ""
+        self._scenario_guidelines: str = ""
         self._load_tasks()
         self._load_env_data()
         self._load_policy()
+        self._load_scenario_guidelines()
     
     def _load_policy(self) -> None:
         """Load the agent policy document for this environment."""
@@ -123,6 +121,28 @@ class ScenarioGenerator:
         except Exception as e:
             print(f"[ScenarioGenerator] Warning: Could not load policy: {e}")
             self._policy = ""
+    
+    def _load_scenario_guidelines(self) -> None:
+        """Load the scenario generator guidelines document for this environment."""
+        import os
+        # Use DATA_ENVS_PATH to find scenario_generator_guidelines.md in data/envs/<env_name>/
+        guidelines_path = os.path.join(DATA_ENVS_PATH, self.env_name, "scenario_generator_guidelines.md")
+        
+        # Also check for retail_t2 -> retail fallback
+        if not os.path.exists(guidelines_path) and self.env_name == "retail_t2":
+            guidelines_path = os.path.join(DATA_ENVS_PATH, "retail", "scenario_generator_guidelines.md")
+        
+        try:
+            if os.path.exists(guidelines_path):
+                with open(guidelines_path, "r") as f:
+                    self._scenario_guidelines = f.read()
+                print(f"[ScenarioGenerator] Loaded scenario guidelines from {guidelines_path}")
+            else:
+                print(f"[ScenarioGenerator] No scenario_generator_guidelines.md found (optional)")
+                self._scenario_guidelines = ""
+        except Exception as e:
+            print(f"[ScenarioGenerator] Warning: Could not load scenario guidelines: {e}")
+            self._scenario_guidelines = ""
     
     def _load_tasks(self) -> None:
         """Load tasks from the environment's task loader."""
@@ -264,9 +284,6 @@ class ScenarioGenerator:
             for i, task in enumerate(seed_tasks)
         ])
         
-        # Get data key from registry
-        data_key = self.env_config.data_key
-        
         # Format DB samples as JSON for the LLM
         db_json = json.dumps(db_samples, indent=2, default=str)
         
@@ -282,12 +299,22 @@ Use this to understand what scenarios are valid and what actions are available.
 
 """
         
+        # Include scenario generator guidelines if available
+        guidelines_section = ""
+        if self._scenario_guidelines:
+            guidelines_section = f"""
+=== SCENARIO GENERATOR GUIDELINES (CRITICAL - READ CAREFULLY) ===
+These guidelines define what scenarios are valid and solvable. Follow these strictly to avoid generating impossible scenarios.
+
+{self._scenario_guidelines}
+
+"""
+        
         return f"""You are generating a NEW, UNIQUE test scenario for a {self.env_config.display_name} customer service simulation.
 
 === ENVIRONMENT: {self.env_config.display_name} ===
 {self.env_config.description}
-{policy_section}
-=== DATABASE STRUCTURE (Sample Records from Each Collection) ===
+{policy_section}{guidelines_section}=== DATABASE STRUCTURE (Sample Records from Each Collection) ===
 Study this structure carefully. Your generated data MUST follow these exact schemas.
 
 ```json
@@ -367,43 +394,28 @@ Then output ONLY the JSON object:
         "name": {{ "first_name": "{ids['first_name']}", "last_name": "{ids['last_name']}" }},
         ... complete user profile following DB structure ...
     }},
-    "{data_key}": {{
-        "#W[order_id]": {{
-            ... order/reservation following DB structure exactly ...
-            "items": [
-                {{
-                    "name": "[product name]",
-                    "product_id": "[must match a product in augmented_data]",
-                    "item_id": "[must match a variant in that product]",
-                    "options": {{ ... must match the variant's options exactly ... }},
-                    "price": [must match the variant's price]
-                }}
-            ]
-        }}
-    }},
     "augmented_data": {{
-        "products": {{
+        // Put ALL generated data here - orders, reservations, products, flights, etc.
+        // Use the EXACT collection names from the DB structure above
+        "orders": {{  // or "reservations" for airline
+            "#W[order_id]": {{
+                ... order/reservation following DB structure exactly ...
+            }}
+        }},
+        "products": {{  // if needed for retail
             "[product_id]": {{
                 "name": "[product name]",
                 "product_id": "[same as key]",
-                "variants": {{
-                    "[item_id_1]": {{
-                        "item_id": "[same as key]",
-                        "options": {{ ... all option key-values ... }},
-                        "available": true,
-                        "price": [price as number]
-                    }},
-                    "[item_id_2]": {{
-                        ... another variant if needed for exchange ...
-                    }}
-                }}
+                "variants": {{ ... }}
             }}
         }}
+        // Add any other collections needed for this scenario
     }}
 }}
 ```
 
 CRITICAL REMINDERS:
+- ALL generated data goes in augmented_data using the exact collection names from the DB
 - item_id in order items MUST exist as a key in the product's variants
 - options in order items MUST exactly match the variant's options  
 - price in order items MUST exactly match the variant's price
@@ -461,9 +473,6 @@ CRITICAL REMINDERS:
             # Parse JSON from response
             data = self._parse_llm_response(response_text)
             
-            # Get data key from registry
-            data_key = self.env_config.data_key
-            
             # Extract user_id from generated user data
             user_data = data.get("user", {})
             user_id = user_data.get("user_id", "")
@@ -479,13 +488,11 @@ CRITICAL REMINDERS:
                 else:
                     user_id = f"generated_user_{random.randint(1000, 9999)}"
             
-            # Create the scenario
+            # Create the scenario - all data goes in augmented_data
             scenario = GeneratedScenario(
                 instruction=data.get("instruction", ""),
                 user=user_data,
                 user_id=user_id,
-                data=data.get(data_key, {}),
-                data_key=data_key,
                 seed_task_instruction=seed_instruction,
                 seed_task_id=seed_task_id,
                 generation_timestamp=datetime.now().isoformat(),
@@ -662,61 +669,57 @@ def log_scenario_to_console(scenario: GeneratedScenario) -> None:
             else:
                 print(f"    - {pm_id}: {source}")
     
-    print(f"\n{'─'*70}")
-    print(f"📦 {scenario.data_key.upper()} DATA")
-    print(f"{'─'*70}")
-    
-    for record_id, record in scenario.data.items():
-        print(f"\n  [{record_id}]")
-        
-        # Common fields
-        if "status" in record:
-            print(f"    Status: {record.get('status')}")
-        
-        # Airline-specific
-        if "origin" in record and "destination" in record:
-            print(f"    Route: {record.get('origin')} → {record.get('destination')}")
-        if "cabin" in record:
-            print(f"    Cabin: {record.get('cabin')}")
-        if "flight_type" in record:
-            print(f"    Type: {record.get('flight_type')}")
-        if "flights" in record:
-            flights = record.get("flights", [])
-            print(f"    Flights: {len(flights)} segment(s)")
-            for f in flights[:3]:  # Show first 3
-                if isinstance(f, dict):
-                    print(f"      - {f.get('flight_number', 'N/A')} on {f.get('date', 'N/A')}")
-        if "passengers" in record:
-            passengers = record.get("passengers", [])
-            print(f"    Passengers: {len(passengers)}")
-        if "total_baggages" in record:
-            print(f"    Bags: {record.get('total_baggages')}")
-        if "insurance" in record:
-            print(f"    Insurance: {record.get('insurance')}")
-        
-        # Retail-specific
-        if "items" in record and "flights" not in record:
-            items = record.get("items", [])
-            print(f"    Items ({len(items)}):")
-            for item in items[:5]:  # Show first 5
-                name = item.get("name", "Unknown")
-                price = item.get("price", 0)
-                print(f"      - {name}: ${price:.2f}")
-                options = item.get("options", {})
-                if options:
-                    opt_str = ", ".join(f"{k}={v}" for k, v in list(options.items())[:3])
-                    print(f"        ({opt_str})")
-    
-    # Show augmented data if present
+    # Show all augmented data (orders, reservations, products, etc.)
     if scenario.augmented_data:
         print(f"\n{'─'*70}")
-        print("📦 AUGMENTED DATA (Will be injected into DB)")
+        print("📦 GENERATED DATA (Will be injected into DB)")
         print(f"{'─'*70}")
         for collection_name, collection_data in scenario.augmented_data.items():
-            if collection_data:
-                print(f"  {collection_name}: {len(collection_data)} record(s)")
-                for record_id in list(collection_data.keys())[:3]:
-                    print(f"    - {record_id}")
+            if not collection_data or not isinstance(collection_data, dict):
+                continue
+            
+            print(f"\n  [{collection_name.upper()}] ({len(collection_data)} record(s))")
+            
+            for record_id, record in list(collection_data.items())[:3]:  # Show first 3
+                print(f"\n    {record_id}:")
+                
+                # Common fields
+                if "status" in record:
+                    print(f"      Status: {record.get('status')}")
+                
+                # Airline-specific (reservations)
+                if "origin" in record and "destination" in record:
+                    print(f"      Route: {record.get('origin')} → {record.get('destination')}")
+                if "cabin" in record:
+                    print(f"      Cabin: {record.get('cabin')}")
+                if "flight_type" in record:
+                    print(f"      Type: {record.get('flight_type')}")
+                if "flights" in record:
+                    flights = record.get("flights", [])
+                    print(f"      Flights: {len(flights)} segment(s)")
+                    for f in flights[:3]:
+                        if isinstance(f, dict):
+                            print(f"        - {f.get('flight_number', 'N/A')} on {f.get('date', 'N/A')}")
+                if "passengers" in record:
+                    print(f"      Passengers: {len(record.get('passengers', []))}")
+                if "total_baggages" in record:
+                    print(f"      Bags: {record.get('total_baggages')}")
+                if "insurance" in record:
+                    print(f"      Insurance: {record.get('insurance')}")
+                
+                # Retail-specific (orders)
+                if "items" in record and "flights" not in record:
+                    items = record.get("items", [])
+                    print(f"      Items ({len(items)}):")
+                    for item in items[:3]:
+                        name = item.get("name", "Unknown")
+                        price = item.get("price", 0)
+                        print(f"        - {name}: ${price:.2f}")
+                
+                # Products
+                if "variants" in record:
+                    variants = record.get("variants", {})
+                    print(f"      Variants: {len(variants)}")
     
     print(f"\n{'─'*70}")
     print("🎯 EXPECTED OUTCOME (SCENARIO GOAL)")
@@ -766,16 +769,16 @@ def scenario_to_persona_data(scenario: GeneratedScenario) -> Dict[str, Any]:
         scenario: The generated scenario
         
     Returns:
-        Dict in persona_data format (includes augmented_data for DB injection)
+        Dict in persona_data format (all data in augmented_data for DB injection)
     """
     return {
         "instruction": scenario.instruction,
         "user": scenario.user,
-        scenario.data_key: scenario.data,
         "generated": True,
         "seed_instruction": scenario.seed_task_instruction,
+        "seed_task_id": scenario.seed_task_id,
         "timestamp": scenario.generation_timestamp,
         "env_name": scenario.env_name,
         "scenario_goal": scenario.scenario_goal,
-        "augmented_data": scenario.augmented_data,  # Additional data to inject into DB
+        "augmented_data": scenario.augmented_data,  # ALL data to inject into DB
     }
