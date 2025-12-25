@@ -408,13 +408,11 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Static files directory
 STATIC_DIR = Path(__file__).parent / "static"
-REACT_DIST_DIR = STATIC_DIR / "react-app" / "dist"
+ASSETS_DIR = STATIC_DIR / "assets"
 
-# Mount React build assets if available
-if REACT_DIST_DIR.exists():
-    assets_dir = REACT_DIST_DIR / "assets"
-    if assets_dir.exists():
-        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+# Mount React build assets directly (JS/CSS files in assets folder)
+if ASSETS_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 
 # Mount legacy static files
 if STATIC_DIR.exists():
@@ -428,12 +426,8 @@ if STATIC_DIR.exists():
 @app.get("/")
 async def root():
     """Serve the main HTML page."""
-    # First try React build
-    react_index = REACT_DIST_DIR / "index.html"
-    if react_index.exists():
-        return FileResponse(str(react_index))
-    # Try assets folder (alternate build location)
-    assets_index = STATIC_DIR / "assets" / "index.html"
+    # Serve from assets folder (React build output)
+    assets_index = ASSETS_DIR / "index.html"
     if assets_index.exists():
         return FileResponse(str(assets_index))
     # Fallback to legacy static index
@@ -446,9 +440,9 @@ async def root():
 @app.get("/admin")
 async def admin_page():
     """Serve the admin page (SPA routing - same index.html)."""
-    react_index = REACT_DIST_DIR / "index.html"
-    if react_index.exists():
-        return FileResponse(str(react_index))
+    assets_index = ASSETS_DIR / "index.html"
+    if assets_index.exists():
+        return FileResponse(str(assets_index))
     index_path = STATIC_DIR / "index.html"
     if index_path.exists():
         return FileResponse(str(index_path))
@@ -458,10 +452,7 @@ async def admin_page():
 @app.get("/env-config")
 async def env_config_page():
     """Serve the environment configuration page (SPA routing - same index.html)."""
-    react_index = REACT_DIST_DIR / "index.html"
-    if react_index.exists():
-        return FileResponse(str(react_index))
-    assets_index = STATIC_DIR / "assets" / "index.html"
+    assets_index = ASSETS_DIR / "index.html"
     if assets_index.exists():
         return FileResponse(str(assets_index))
     index_path = STATIC_DIR / "index.html"
@@ -2094,9 +2085,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 @app.get("/trajectories/{trajectory_id}/simulation")
 async def trajectory_simulation_page(trajectory_id: str):
     """Serve the SPA for trajectory simulation pages."""
-    react_index = REACT_DIST_DIR / "index.html"
-    if react_index.exists():
-        return FileResponse(str(react_index))
+    assets_index = ASSETS_DIR / "index.html"
+    if assets_index.exists():
+        return FileResponse(str(assets_index))
     index_path = STATIC_DIR / "index.html"
     if index_path.exists():
         return FileResponse(str(index_path))
@@ -2106,9 +2097,9 @@ async def trajectory_simulation_page(trajectory_id: str):
 @app.get("/trajectory")
 async def trajectory_page():
     """Serve the SPA for trajectory list page."""
-    react_index = REACT_DIST_DIR / "index.html"
-    if react_index.exists():
-        return FileResponse(str(react_index))
+    assets_index = ASSETS_DIR / "index.html"
+    if assets_index.exists():
+        return FileResponse(str(assets_index))
     index_path = STATIC_DIR / "index.html"
     if index_path.exists():
         return FileResponse(str(index_path))

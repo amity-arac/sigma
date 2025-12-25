@@ -11,16 +11,17 @@ export default defineConfig({
       '/health': 'http://localhost:8000',
     }
   },
+  base: '/assets/',
   build: {
     // Build directly into the static/assets folder that the backend serves
     outDir: '../assets',
     emptyOutDir: true,
     rollupOptions: {
       output: {
-        // Use consistent naming without hashes for cleaner git diffs
-        assetFileNames: 'assets/[name][extname]',
-        chunkFileNames: 'assets/[name].js',
-        entryFileNames: 'assets/[name].js',
+        // Output directly in assets folder, not assets/assets
+        assetFileNames: '[name][extname]',
+        chunkFileNames: '[name].js',
+        entryFileNames: '[name].js',
       }
     }
   }
