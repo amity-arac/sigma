@@ -378,6 +378,7 @@ function AdminPage() {
             <option value="dpo">DPO Format</option>
             <option value="grpo">GRPO Format</option>
             <option value="sft">SFT Format</option>
+            <option value="raw">Raw Trajectory</option>
             <option value="optimized_policy">Optimized Policy</option>
           </select>
           <button 
@@ -390,6 +391,8 @@ function AdminPage() {
               ? 'Export as GRPO (Group Relative Policy Optimization) format - extracts tool call sequences for verifiable rewards'
               : exportFormat === 'sft'
               ? 'Export as SFT (Supervised Fine-Tuning) format - creates one training sample per assistant turn'
+              : exportFormat === 'raw'
+              ? 'Export raw trajectories as-is in JSONL format - for archival or custom processing'
               : 'Generate an optimized policy based on rejection patterns - AI analyzes rejections and suggests policy improvements'
             }
           >

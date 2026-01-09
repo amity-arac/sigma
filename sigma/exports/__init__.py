@@ -7,6 +7,7 @@ This module provides converters for various training data formats:
 - GRPO (Group Relative Policy Optimization)  
 - SFT (Supervised Fine-Tuning)
 - Optimized Policy (AI-generated policy improvements based on rejections)
+- Raw (Raw trajectory JSONL for archival/custom processing)
 
 Usage:
     from sigma.exports import convert_trajectories, ExportTrajectoryRequest, ExportTrajectoryResponse
@@ -20,6 +21,7 @@ from .dpo import convert_to_dpo_format
 from .grpo import convert_to_grpo_format
 from .sft import convert_to_sft_format
 from .optimized_policy import convert_to_optimized_policy_format
+from .raw import convert_to_raw_format
 
 __all__ = [
     # Models
@@ -32,6 +34,7 @@ __all__ = [
     "convert_to_grpo_format", 
     "convert_to_sft_format",
     "convert_to_optimized_policy_format",
+    "convert_to_raw_format",
 ]
 
 
@@ -41,6 +44,7 @@ EXPORT_FORMATS = {
     "grpo": convert_to_grpo_format,
     "sft": convert_to_sft_format,
     "optimized_policy": convert_to_optimized_policy_format,
+    "raw": convert_to_raw_format,
 }
 
 

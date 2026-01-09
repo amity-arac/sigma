@@ -140,7 +140,8 @@ def _create_sft_records_for_trajectory(
         
         if role in ['agent', 'tool']:
             # Check if this is an action point (agent response or tool call)
-            converted = _convert_message_for_sft(msg)
+            reasoning = msg.get('reasoning', '')
+            converted = _convert_message_for_sft(msg, reasoning=reasoning)
             if converted:
                 # Create SFT record with conversation up to this point as context
                 sft_record = {
@@ -151,8 +152,7 @@ def _create_sft_records_for_trajectory(
                     "reject_rubric": ""
                 }
                 
-                # Add chosen reasoning if available
-                reasoning = msg.get('reasoning', '')
+                # Add chosen reasoning if available (kept for backward compatibility)
                 if reasoning:
                     sft_record["chosen_answer_raw"] = reasoning
                 
@@ -176,8 +176,16 @@ def _create_sft_records_for_trajectory(
     return sft_records
 
 
-def _convert_message_for_sft(msg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Convert a trajectory message to SFT format."""
+def _convert_message_for_sft(msg: Dict[str, Any], reasoning: str = None) -> Optional[Dict[str, Any]]:
+    """Convert a trajectory message to SFT format.
+    
+    Args:
+        msg: The trajectory message to convert
+        reasoning: Optional reasoning content to include for assistant messages
+        
+    Returns:
+        Converted message dict or None if conversion not applicable
+    """
     role = msg.get('role', '')
     
     if role == 'user':
@@ -190,6 +198,7 @@ def _convert_message_for_sft(msg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         result = {
             "role": "assistant",
             "content": msg.get('content'),
+            "reasoning_content": reasoning if reasoning else None,
             "tool_calls": None
         }
         
@@ -225,6 +234,7 @@ def _convert_message_for_sft(msg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return {
             "role": "assistant",
             "content": None,
+            "reasoning_content": reasoning if reasoning else None,
             "tool_calls": [{
                 "id": f"chatcmpl-tool-{msg.get('id', '')}",
                 "name": tool_name,
